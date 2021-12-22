@@ -1,11 +1,11 @@
 packages:
 - examples
-- PureMQ
-- PureMQ-DB
+- pureMQ
+- pureMQ-mvcc
 
 extra-deps:
 - fused-effects-1.1.1.1
 
-resolver: lts-18.15
+resolver: lts-18.17
 
 system-ghc: true
