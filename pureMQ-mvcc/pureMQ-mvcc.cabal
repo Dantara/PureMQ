@@ -6,7 +6,8 @@ author:             Nikita Aleshchenko
 maintainer:         n.aleshchenko@tinkoff.ru
 
 library
-    exposed-modules:
+    exposed-modules:    PureMQ.MVCC.Types
+                      , PureMQ.MVCC.Transaction
     build-depends:      base >= 4.12.0.0
                       , containers
                       , fused-effects
@@ -14,6 +15,7 @@ library
                       , generic-lens
                       , microlens
                       , text
+                      , unagi-chan
                       , pureMQ
     hs-source-dirs:     src
     default-language:   Haskell2010

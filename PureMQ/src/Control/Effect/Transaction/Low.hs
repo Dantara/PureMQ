@@ -16,6 +16,13 @@ data TransactionError
   | TransactionWasCancelled Text
   deriving (Eq, Ord, Show, Generic)
 
+data TransStatus
+  = Initiated
+  | Prepared
+  | Commited
+  | Canceled
+  deriving (Eq, Ord, Show, Generic)
+
 data Transaction a (m :: Type -> Type) r where
   InitPrepare :: Transaction a m (Either TransactionError TransactionID)
 
