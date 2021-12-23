@@ -2,12 +2,16 @@ module PureMQ.MVCC.Transaction where
 
 import           Control.Concurrent
 import           Control.Concurrent.Chan.Unagi
+import           Control.Concurrent.MVar       (readMVar)
+import           Control.Monad
+import           Data.Coerce
 import           Data.Generics.Labels          ()
 import           Data.IntMap                   (IntMap)
 import qualified Data.IntMap                   as Map
 import           Data.IntSet                   (IntSet)
 import qualified Data.IntSet                   as Set
-import           Data.Sequence                 (Seq (..), (<|), (|>))
+import           Data.Sequence                 (Seq (..), ViewR (..), (<|),
+                                                (|>))
 import qualified Data.Sequence                 as Seq
 import           GHC.Generics
 import           GHC.IORef
@@ -52,8 +56,31 @@ commit trans@(Transaction ref) MvccMap{..} = do
   case currentStatus of
     Prepared -> do
       writeIORef ref $! set #status Committed transData
-      modifyMVar_ transactionsQueue (\seq -> pure $! seq |> trans)
+      modifyMVar_ transactionsQueue (\seq -> pure $! trans <| seq)
       pure Nothing
     _ ->
       pure $ Just $ WrongTransStatusChange currentStatus Committed
 
+vacuum :: MvccMap m v -> IO ()
+vacuum m@MvccMap{..} = do
+  currentSeq <- readMVar transactionsQueue
+  needToRemove <- case Seq.viewr currentSeq of
+    EmptyR   -> pure False
+    _ :> elm -> vacuumSingle elm >> pure True
+  when needToRemove do
+    modifyMVar_ transactionsQueue (pure . Seq.deleteAt 0)
+    vacuum m
+  where
+    vacuumSingle (Transaction ref) = do
+      TransactionData{..} <- readIORef ref
+      case status of
+        Committed -> do
+          primMap <- readIORef primaryMap
+          let
+            removeElems [] m     = m
+            removeElems (k:ks) m = removeElems ks (Map.delete k m)
+            withModifies = Map.union (unModifyLog modifyLog)
+            withDeletes  = removeElems (Set.toList $ coerce deleteLog)
+            updatedMap = withDeletes $! withModifies primMap
+          writeIORef primaryMap updatedMap
+        _ -> pure ()
