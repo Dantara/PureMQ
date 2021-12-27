@@ -6,7 +6,9 @@ author:             Nikita Aleshchenko
 maintainer:         n.aleshchenko@tinkoff.ru
 
 library
-    exposed-modules:    PureMQ.MVCC.Types
+    exposed-modules:    PureMQ.MVCC.KeyValue
+                      , PureMQ.MVCC.Queue
+                      , PureMQ.MVCC.Types
                       , PureMQ.MVCC.Transaction
     build-depends:      base >= 4.12.0.0
                       , containers

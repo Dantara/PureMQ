@@ -1,18 +1,16 @@
 module PureMQ.MVCC.Transaction where
 
 import           Control.Concurrent
-import           Control.Concurrent.Chan.Unagi
-import           Control.Concurrent.MVar       (readMVar)
+import           Control.Concurrent.MVar (readMVar)
 import           Control.Monad
 import           Data.Coerce
-import           Data.Generics.Labels          ()
-import           Data.IntMap                   (IntMap)
-import qualified Data.IntMap                   as Map
-import           Data.IntSet                   (IntSet)
-import qualified Data.IntSet                   as Set
-import           Data.Sequence                 (Seq (..), ViewR (..), (<|),
-                                                (|>))
-import qualified Data.Sequence                 as Seq
+import           Data.Generics.Labels    ()
+import           Data.IntMap             (IntMap)
+import qualified Data.IntMap             as Map
+import           Data.IntSet             (IntSet)
+import qualified Data.IntSet             as Set
+import           Data.Sequence           (Seq (..), ViewR (..), (<|), (|>))
+import qualified Data.Sequence           as Seq
 import           GHC.Generics
 import           GHC.IORef
 import           Lens.Micro
@@ -56,7 +54,21 @@ commit trans@(Transaction ref) MvccMap{..} = do
   case currentStatus of
     Prepared -> do
       writeIORef ref $! set #status Committed transData
-      modifyMVar_ transactionsQueue (\seq -> pure $! trans <| seq)
+      modifyMVar_ transactionsQueue (\seq -> pure $! seq |> trans)
+      pure Nothing
+    _ ->
+      pure $ Just $ WrongTransStatusChange currentStatus Committed
+
+commitAsync :: Transaction v -> MvccMap m v -> IO (Maybe TransactionError)
+commitAsync trans@(Transaction ref) MvccMap{..} = do
+  transData <- readIORef ref
+  let currentStatus = transData ^. #status
+  case currentStatus of
+    Prepared -> do
+      writeIORef ref $! set #status Committed transData
+      void
+        $ forkIO
+        $ modifyMVar_ transactionsQueue (\seq -> pure $! seq |> trans)
       pure Nothing
     _ ->
       pure $ Just $ WrongTransStatusChange currentStatus Committed

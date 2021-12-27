@@ -5,7 +5,7 @@ import           Control.Effect.Reader
 import           Control.Effect.Storage.Common
 import           Data.Kind
 
-data QueueStorage v (m ::ype ->ype) r where
+data QueueStorage v (m :: Type -> Type) r where
   Push        :: v -> QueueStorage v m ()
   Pull        :: QueueStorage v m v
   PullIfExist :: QueueStorage v m (Maybe v)

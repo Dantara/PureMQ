@@ -9,6 +9,7 @@ newtype TransactionID = TransactionID
 
 data TransactionError
   = WrongTransStatusChange TransStatus TransStatus
+  | WrongTransStatus TransStatus
   | TransactionWasCancelled Text
   deriving (Eq, Ord, Show, Generic)
 
