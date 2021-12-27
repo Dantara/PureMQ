@@ -6,7 +6,8 @@ author:             Nikita Aleshchenko
 maintainer:         n.aleshchenko@tinkoff.ru
 
 library
-    exposed-modules:    PureMQ.MVCC.KeyValue
+    exposed-modules:    PureMQ.MVCC.Init
+                      , PureMQ.MVCC.KeyValue
                       , PureMQ.MVCC.Queue
                       , PureMQ.MVCC.Types
                       , PureMQ.MVCC.Transaction

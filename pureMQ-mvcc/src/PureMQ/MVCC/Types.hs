@@ -23,7 +23,7 @@ type family WithMode (m :: MapMode) where
   WithMode KeyValue = ()
   WithMode Combined = QueueExtention
 
-type KeyValMap v   = MvccMap KeyValue v
+type KeyValueMap v = MvccMap KeyValue v
 type CombinedMap v = MvccMap Combined v
 
 data MvccMap (m :: MapMode) v = MvccMap

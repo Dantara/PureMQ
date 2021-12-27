@@ -15,7 +15,6 @@ import           GHC.Generics
 import           GHC.IORef
 import           Lens.Micro
 import           PureMQ.MVCC.Types
-import           PureMQ.MVCC.Types       (ModifyLog (unModifyLog))
 import           PureMQ.Types
 
 initPrepare :: MvccMap m v -> IO (Transaction v)
