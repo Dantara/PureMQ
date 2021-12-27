@@ -34,7 +34,7 @@ data MvccMap (m :: MapMode) v = MvccMap
 
 data QueueExtention = QueueExtention
   { nextKey  :: MVar Key
-  , pullLock :: MVar () }
+  , pullLock :: Chan () }
   deriving Generic
 
 newtype Transaction v = Transaction

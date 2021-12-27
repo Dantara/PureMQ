@@ -15,6 +15,7 @@ import           GHC.Generics
 import           GHC.IORef
 import           Lens.Micro
 import           PureMQ.MVCC.Types
+import           PureMQ.MVCC.Types       (ModifyLog (unModifyLog))
 import           PureMQ.Types
 
 initPrepare :: MvccMap m v -> IO (Transaction v)
@@ -47,8 +48,8 @@ cancelPrepare trans@(Transaction ref) = do
       writeIORef ref $! set #status Canceled transData
       pure Nothing
 
-commit :: Transaction v -> MvccMap m v -> IO (Maybe TransactionError)
-commit trans@(Transaction ref) MvccMap{..} = do
+commitKeyValue :: Transaction v -> MvccMap KeyValue v -> IO (Maybe TransactionError)
+commitKeyValue trans@(Transaction ref) MvccMap{..} = do
   transData <- readIORef ref
   let currentStatus = transData ^. #status
   case currentStatus of
@@ -59,8 +60,8 @@ commit trans@(Transaction ref) MvccMap{..} = do
     _ ->
       pure $ Just $ WrongTransStatusChange currentStatus Committed
 
-commitAsync :: Transaction v -> MvccMap m v -> IO (Maybe TransactionError)
-commitAsync trans@(Transaction ref) MvccMap{..} = do
+commitAsyncKeyValue :: Transaction v -> MvccMap KeyValue v -> IO (Maybe TransactionError)
+commitAsyncKeyValue trans@(Transaction ref) MvccMap{..} = do
   transData <- readIORef ref
   let currentStatus = transData ^. #status
   case currentStatus of
@@ -69,6 +70,52 @@ commitAsync trans@(Transaction ref) MvccMap{..} = do
       void
         $ forkIO
         $ modifyMVar_ transactionsQueue (\seq -> pure $! seq |> trans)
+      pure Nothing
+    _ ->
+      pure $ Just $ WrongTransStatusChange currentStatus Committed
+
+commitCombined :: Transaction v -> MvccMap Combined v -> IO (Maybe TransactionError)
+commitCombined trans@(Transaction ref) MvccMap{..} = do
+  transData@TransactionData{..} <- readIORef ref
+  let
+    currentStatus = transData ^. #status
+    sizeDiff = Map.size (unModifyLog modifyLog) - Set.size (coerce deleteLog)
+  case currentStatus of
+    Prepared -> do
+      writeIORef ref $! set #status Committed transData
+      when (sizeDiff < 0)
+        $ replicateM_ (negate sizeDiff)
+        $ forkIO
+        $ writeChan (queueExtention ^. #pullLock) ()
+      modifyMVar_ transactionsQueue (\seq -> pure $! seq |> trans)
+      when (sizeDiff > 0)
+        $ replicateM_ sizeDiff
+        $ writeChan (queueExtention ^. #pullLock) ()
+      pure Nothing
+    _ ->
+      pure $ Just $ WrongTransStatusChange currentStatus Committed
+
+commitAsyncCombined :: Transaction v -> MvccMap Combined v -> IO (Maybe TransactionError)
+commitAsyncCombined trans@(Transaction ref) MvccMap{..} = do
+  transData@TransactionData{..} <- readIORef ref
+  let
+    currentStatus = transData ^. #status
+    sizeDiff = Map.size (unModifyLog modifyLog) - Set.size (coerce deleteLog)
+  case currentStatus of
+    Prepared -> do
+      writeIORef ref $! set #status Committed transData
+      when (sizeDiff < 0)
+        $ replicateM_ (negate sizeDiff)
+        $ forkIO
+        $ writeChan (queueExtention ^. #pullLock) ()
+      void
+        $ forkIO
+        $ modifyMVar_ transactionsQueue (\seq -> pure $! seq |> trans)
+      when (sizeDiff > 0)
+        $ void
+        $ forkIO
+        $ replicateM_ sizeDiff
+        $ writeChan (queueExtention ^. #pullLock) ()
       pure Nothing
     _ ->
       pure $ Just $ WrongTransStatusChange currentStatus Committed

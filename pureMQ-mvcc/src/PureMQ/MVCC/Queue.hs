@@ -85,6 +85,26 @@ pullIfExist
   :: Transaction v
   -> MvccMap Combined v
   -> IO (Maybe v)
-pullIfExist trans mvccMap = do
+pullIfExist trans mvccMap@MvccMap{..} = do
+  forkIO $ readChan $ queueExtention ^. #pullLock
   mRes <- peekIfExistWithKey (Just trans) mvccMap
   maybe (pure Nothing) (\(k, v) -> delete k trans >> pure (Just v)) mRes
+
+peek
+  :: Maybe (Transaction v)
+  -> MvccMap Combined v
+  -> IO v
+peek trans mvccMap@MvccMap{..} = do
+  readChan $ queueExtention ^. #pullLock
+  elm <- peekIfExist trans mvccMap
+  writeChan (queueExtention ^. #pullLock) ()
+  pure $ elm ^?! _Just
+
+pull
+  :: Transaction v
+  -> MvccMap Combined v
+  -> IO v
+pull trans mvccMap@MvccMap{..} = do
+  readChan $ queueExtention ^. #pullLock
+  elm <- pullIfExist trans mvccMap
+  pure $ elm ^?! _Just
