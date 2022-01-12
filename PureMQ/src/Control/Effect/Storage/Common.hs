@@ -7,6 +7,4 @@ newtype TableName = TableName
   { unwrapTableName :: Text }
   deriving (Eq, Ord, Show, Generic)
 
-data Database = Database
-
 class StorageEff (e :: (* -> *) -> * -> *)

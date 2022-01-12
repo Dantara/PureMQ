@@ -1,12 +1,13 @@
 module PureMQ.MVCC.Types where
 
 import           Control.Concurrent
-import           Data.IntMap        (IntMap)
-import qualified Data.IntMap        as Map
-import           Data.IntSet        (IntSet)
-import qualified Data.IntSet        as Set
-import           Data.Sequence      (Seq (..))
-import qualified Data.Sequence      as Seq
+import           Control.Concurrent.STM.TVar
+import           Data.IntMap                 (IntMap)
+import qualified Data.IntMap                 as Map
+import           Data.IntSet                 (IntSet)
+import qualified Data.IntSet                 as Set
+import           Data.Sequence               (Seq (..))
+import qualified Data.Sequence               as Seq
 import           GHC.Generics
 import           GHC.IORef
 import           PureMQ.Types
@@ -27,9 +28,10 @@ type KeyValueMap v = MvccMap KeyValue v
 type CombinedMap v = MvccMap Combined v
 
 data MvccMap (m :: MapMode) v = MvccMap
-  { primaryMap        :: IORef (IntMap v)
-  , transactionsQueue :: MVar (Seq (Transaction v))
-  , queueExtention    :: WithMode m }
+  { primaryMap     :: IORef (IntMap v)
+  , uncommitted    :: TVar (UncommittedTransactions v)
+  , committed      :: TVar (CommittedTransactions v)
+  , queueExtention :: WithMode m }
   deriving Generic
 
 data QueueExtention = QueueExtention
@@ -37,14 +39,26 @@ data QueueExtention = QueueExtention
   , pullLock :: Chan () }
   deriving Generic
 
+data UncommittedTransactions v = UncommittedTransactions
+  { nextKey      :: Int
+  , transactions :: IntMap (Transaction v) }
+  deriving Generic
+
+data CommittedTransactions v = CommittedTransactions
+  { nextKey      :: Maybe Int
+  , transactions :: IntMap (TransactionData v) }
+  deriving Generic
+
 newtype Transaction v = Transaction
-  { unTrasaction :: IORef (TransactionData v) }
+  { unTransaction :: IORef (TransactionData v) }
   deriving Generic
 
 data TransactionData v = TransactionData
-  { modifyLog :: ModifyLog v
-  , deleteLog :: DeleteLog
-  , status    :: TransStatus }
+  { modifyLog      :: ModifyLog v
+  , deleteLog      :: DeleteLog
+  , isolationLevel :: IsolationLevel
+  , ranges         :: [(Maybe Int, Maybe Int)]
+  , status         :: TransStatus }
   deriving Generic
 
 newtype ModifyLog v = ModifyLog

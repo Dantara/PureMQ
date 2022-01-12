@@ -6,61 +6,46 @@ import           Control.Algebra
 import           Data.Kind
 import           Data.Text       (Text)
 import           GHC.Generics
+import           PureMQ.Types
 
-newtype TransactionID = TransactionID
-  { unTrasactionID :: Int }
-  deriving (Eq, Ord, Show, Generic)
-
-data TransactionError
-  = SomeTransactionError
-  | TransactionWasCancelled Text
-  deriving (Eq, Ord, Show, Generic)
-
-data TransStatus
-  = Initiated
-  | Prepared
-  | Commited
-  | Canceled
-  deriving (Eq, Ord, Show, Generic)
-
-data Transaction a (m :: Type -> Type) r where
-  InitPrepare :: Transaction a m (Either TransactionError TransactionID)
+data Transaction (m :: Type -> Type) r where
+  InitPrepare :: Transaction m (Either TransactionError TransactionID)
 
   CommitPrepare
     :: TransactionID
-    -> Transaction a m (Maybe TransactionError)
+    -> Transaction m (Maybe TransactionError)
 
   Commit
     :: TransactionID
-    -> Transaction a m (Either TransactionError a)
+    -> Transaction m (Maybe TransactionError)
 
   Rollback
     :: TransactionID
-    -> Transaction a m (Maybe TransactionError)
+    -> Transaction m (Maybe TransactionError)
 
 initPrepare
-  :: forall a m sig
-  .  Has (Transaction a) sig m
+  :: forall m sig
+  .  Has Transaction sig m
   => m (Either TransactionError TransactionID)
-initPrepare = send $ InitPrepare @a
+initPrepare = send InitPrepare
 
 commitPrepare
-  :: forall a m sig
-  .  Has (Transaction a) sig m
+  :: forall m sig
+  .  Has Transaction sig m
   => TransactionID
   -> m (Maybe TransactionError)
-commitPrepare = send . CommitPrepare @a
+commitPrepare = send . CommitPrepare
 
 commit
-  :: forall a m sig
-  .  Has (Transaction a) sig m
-  => TransactionID
-  -> m (Either TransactionError a)
-commit = send . Commit @a
-
-rollback
-  :: forall a m sig
-  .  Has (Transaction a) sig m
+  :: forall m sig
+  .  Has Transaction sig m
   => TransactionID
   -> m (Maybe TransactionError)
-rollback = send . Rollback @a
+commit = send . Commit
+
+rollback
+  :: forall m sig
+  .  Has Transaction sig m
+  => TransactionID
+  -> m (Maybe TransactionError)
+rollback = send . Rollback

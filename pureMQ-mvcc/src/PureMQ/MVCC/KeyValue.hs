@@ -1,17 +1,18 @@
 module PureMQ.MVCC.KeyValue where
 
 import           Control.Concurrent
-import           Control.Concurrent.MVar (readMVar)
+import           Control.Concurrent.STM.TVar
 import           Control.Exception
 import           Control.Monad
 import           Data.Coerce
-import           Data.Generics.Labels    ()
-import           Data.IntMap             (IntMap)
-import qualified Data.IntMap             as Map
-import           Data.IntSet             (IntSet)
-import qualified Data.IntSet             as Set
-import           Data.Sequence           (Seq (..), ViewR (..), (<|), (|>))
-import qualified Data.Sequence           as Seq
+import           Data.Generics.Labels        ()
+import           Data.IntMap                 (IntMap)
+import qualified Data.IntMap                 as Map
+import           Data.IntSet                 (IntSet)
+import qualified Data.IntSet                 as Set
+import           Data.Maybe                  (fromMaybe)
+import           Data.Sequence               (Seq (..), ViewR (..), (<|), (|>))
+import qualified Data.Sequence               as Seq
 import           GHC.Generics
 import           GHC.IORef
 import           Lens.Micro
@@ -23,61 +24,87 @@ data WasDeleted = WasDeleted
 
 instance Exception WasDeleted
 
-lookup :: Key -> Maybe (Transaction v) -> MvccMap m v -> IO (Maybe v)
-lookup k mTrans MvccMap{..} = do
-  committed <- readMVar transactionsQueue
-  let transactions = maybe committed (committed |>) mTrans
-  tsLookupResult <- transLookup transactions
-  case tsLookupResult of
-    Nothing -> do
-      pMap <- readIORef primaryMap
-      pure $ Map.lookup (coerce k) pMap
-    Just v ->
-      pure $ Just v
+lookup :: Key -> TransactionID -> MvccMap m v -> IO (Maybe v)
+lookup key transId MvccMap{..} = handle (\WasDeleted -> pure Nothing) do
+  uncommitted' <- readTVarIO uncommitted
+  ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
+    $ Map.lookup (coerce transId) $ uncommitted' ^. #transactions
+  transData <- readIORef ref
+  when (transData ^. #status /= Initiated)
+    $ throwIO $ WrongTransStatus $ transData ^. #status
+  CommittedTransactions{..} <- readTVarIO committed
+  mResult <- case (transData ^. #isolationLevel, nextKey) of
+    (ReadCommited, Just splitter) -> do
+      let
+        (youngTs, oldTs)
+          = over both (fmap snd . Map.toDescList)
+          $ Map.partitionWithKey (\k _ -> k < splitter) transactions
+        transDataList = transData : youngTs <> oldTs
+      transDatasLookup transDataList
+    (ReadCommited, Nothing) ->
+      singleTransDataLookup transData
+    (Serializable, _) -> do
+      let
+        mkPredicate (mLow, mHigh)
+          = \k _ -> maybe True (< k) mLow && maybe True (> k) mHigh
+        transDataList
+          = fmap snd
+          $ foldMap (\r -> Map.toDescList $ Map.filterWithKey (mkPredicate r) transactions)
+          $ transData ^. #ranges
+      transDatasLookup $ transData : transDataList
+  maybe (Map.lookup (coerce key) <$> readIORef primaryMap) (pure . Just) mResult
   where
-    transLookup ts = case Seq.viewr ts of
-      EmptyR -> pure Nothing
-      others :> curr -> do
-        mVal <- singleTransLookup curr
-        maybe (transLookup others) (pure . Just) mVal
-    singleTransLookup (Transaction ref) = do
-      TransactionData{..} <- readIORef ref
-      when (Set.member (coerce k) (coerce deleteLog))
+    transDatasLookup [] = pure Nothing
+    transDatasLookup (t:ts) = do
+      mResult <- singleTransDataLookup t
+      maybe (transDatasLookup ts) (pure . Just) mResult
+    singleTransDataLookup TransactionData{..} = do
+      when (Set.member (coerce key) (coerce deleteLog))
         $ throwIO WasDeleted
-      pure $ Map.lookup (coerce k) (unModifyLog modifyLog)
+      pure $ Map.lookup (coerce key) (unModifyLog modifyLog)
 
-insert :: Key -> v -> Transaction v -> IO (Maybe TransactionError)
-insert k v (Transaction ref) = do
-  td@TransactionData{..} <- readIORef ref
-  case status of
-    Initiated -> do
-      let updated = coerce $ Map.insert (coerce k) v (coerce modifyLog)
-      writeIORef ref $! set #modifyLog updated td
-      pure Nothing
-    status ->
-      pure $ Just $ WrongTransStatus status
+insert :: Key -> v -> TransactionID -> MvccMap m v -> IO ()
+insert k v transId MvccMap{..} = do
+  UncommittedTransactions{..} <- readTVarIO uncommitted
+  ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
+    $ Map.lookup (coerce transId) transactions
+  transData@TransactionData{..} <- readIORef ref
+  when (status /= Initiated)
+    $ throwIO $ WrongTransStatus status
+  let updated = coerce $ Map.insert (coerce k) v (coerce modifyLog)
+  writeIORef ref $! set #modifyLog updated transData
 
-modify :: Key -> (v -> v) -> Transaction v -> IO (Maybe TransactionError)
-modify k f (Transaction ref) = do
-  td@TransactionData{..} <- readIORef ref
+modify :: Key -> (v -> v) -> TransactionID -> MvccMap m v -> IO (Maybe TransactionError)
+modify k f transId MvccMap{..} = do
+  UncommittedTransactions{..} <- readTVarIO uncommitted
+  ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
+    $ Map.lookup (coerce transId) transactions
+  transData@TransactionData{..} <- readIORef ref
+  when (status /= Initiated)
+    $ throwIO $ WrongTransStatus status
   case status of
     Initiated -> do
       let updated = coerce $ Map.adjust f (coerce k) (coerce modifyLog)
-      writeIORef ref $! set #modifyLog updated td
+      writeIORef ref $! set #modifyLog updated transData
       pure Nothing
     status ->
       pure $ Just $ WrongTransStatus status
 
-delete :: forall v. Key -> Transaction v -> IO (Maybe TransactionError)
-delete k (Transaction ref) = do
-  td@TransactionData{..} <- readIORef ref
+delete :: Key -> TransactionID -> MvccMap m v -> IO (Maybe TransactionError)
+delete k transId MvccMap{..} = do
+  UncommittedTransactions{..} <- readTVarIO uncommitted
+  ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
+    $ Map.lookup (coerce transId) transactions
+  transData@TransactionData{..} <- readIORef ref
+  when (status /= Initiated)
+    $ throwIO $ WrongTransStatus status
   case status of
     Initiated -> do
       let
         deleteLog = coerce $ Set.insert (coerce k) (coerce deleteLog)
         modifyLog = coerce $ Map.delete (coerce k) (unModifyLog modifyLog)
-      writeIORef ref $! set #deleteLog deleteLog td
-      writeIORef ref $! set #modifyLog modifyLog td
+      writeIORef ref $! set #deleteLog deleteLog transData
+      writeIORef ref $! set #modifyLog modifyLog transData
       pure Nothing
     status ->
       pure $ Just $ WrongTransStatus status
