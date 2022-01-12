@@ -1,18 +1,18 @@
 module PureMQ.MVCC.KeyValue where
 
 import           Control.Concurrent
+import           Control.Concurrent.STM
+import           Control.Concurrent.STM.TChan
 import           Control.Concurrent.STM.TVar
 import           Control.Exception
 import           Control.Monad
 import           Data.Coerce
-import           Data.Generics.Labels        ()
-import           Data.IntMap                 (IntMap)
-import qualified Data.IntMap                 as Map
-import           Data.IntSet                 (IntSet)
-import qualified Data.IntSet                 as Set
-import           Data.Maybe                  (fromMaybe)
-import           Data.Sequence               (Seq (..), ViewR (..), (<|), (|>))
-import qualified Data.Sequence               as Seq
+import           Data.Generics.Labels         ()
+import           Data.IntMap                  (IntMap)
+import qualified Data.IntMap                  as Map
+import           Data.IntSet                  (IntSet)
+import qualified Data.IntSet                  as Set
+import           Data.Maybe                   (fromMaybe)
 import           GHC.Generics
 import           GHC.IORef
 import           Lens.Micro

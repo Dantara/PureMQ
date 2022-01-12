@@ -2,28 +2,32 @@ module PureMQ.MVCC.Transaction where
 
 import           Control.Applicative
 import           Control.Concurrent
-import           Control.Concurrent.MVar     (readMVar)
+import           Control.Concurrent.MVar      (readMVar)
+import           Control.Concurrent.STM.TChan
 import           Control.Concurrent.STM.TVar
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.STM
 import           Data.Coerce
-import           Data.Generics.Labels        ()
-import           Data.IntMap                 (IntMap)
-import qualified Data.IntMap                 as Map
-import           Data.IntSet                 (IntSet)
-import qualified Data.IntSet                 as Set
-import           Data.Sequence               (Seq (..), ViewR (..), (<|), (|>))
-import qualified Data.Sequence               as Seq
+import           Data.Generics.Labels         ()
+import           Data.IntMap                  (IntMap)
+import qualified Data.IntMap                  as Map
+import           Data.IntSet                  (IntSet)
+import qualified Data.IntSet                  as Set
 import           GHC.Generics
 import           GHC.IORef
 import           Lens.Micro
 import           PureMQ.MVCC.Types
 import           PureMQ.Types
 
-initPrepare :: IsolationLevel -> MvccMap m v -> IO TransactionID
-initPrepare isolationLevel MvccMap{..} = do
+initPrepare
+  :: IsolationLevel
+  -> MvccMap m v
+  -> (WithModeGlobal m -> IO (WithModeLocal m))
+  -> IO TransactionID
+initPrepare isolationLevel MvccMap{..} mkLock = do
   CommittedTransactions{..} <- readTVarIO committed
+  pullLock <- mkLock queueExtention
   let
     status = Initiated
     modifyLog = ModifyLog $! Map.empty
@@ -47,6 +51,23 @@ initPrepare isolationLevel MvccMap{..} = do
     mkNextKey k
       | k == maxBound = 0
       | otherwise = k + 1
+
+initPrepareKeyValue
+  :: IsolationLevel
+  -> MvccMap KeyValue v
+  -> IO TransactionID
+initPrepareKeyValue lvl mvccMap
+  = initPrepare lvl mvccMap $ const $ pure ()
+
+initPrepareCombined
+  :: IsolationLevel
+  -> MvccMap Combined v
+  -> IO TransactionID
+initPrepareCombined lvl mvccMap
+  = initPrepare lvl mvccMap
+  $ \ext -> atomically
+  $ dupTChan
+  $ ext ^. #pullLock
 
 commitPrepare :: TransactionID -> MvccMap m v -> IO ()
 commitPrepare transId MvccMap{..} = do
@@ -72,7 +93,7 @@ cancelPrepare transId MvccMap{..} = do
     $ WrongTransStatusChange currentStatus Canceled
   writeIORef ref $! set #status Canceled transData
 
-commitKeyValue :: TransactionID -> MvccMap m v -> IO ()
+commitKeyValue :: TransactionID -> MvccMap KeyValue v -> IO ()
 commitKeyValue transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
   ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
@@ -92,7 +113,7 @@ commitKeyValue transId MvccMap{..} = do
     updateIfNeed n Nothing = Just n
     updateIfNeed _ x       = x
 
-commitAsyncKeyValue :: TransactionID -> MvccMap m v -> IO ()
+commitAsyncKeyValue :: TransactionID -> MvccMap KeyValue v -> IO ()
 commitAsyncKeyValue transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
   ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
@@ -112,51 +133,49 @@ commitAsyncKeyValue transId MvccMap{..} = do
     updateIfNeed n Nothing = Just n
     updateIfNeed _ x       = x
 
--- commitCombined :: Transaction v -> MvccMap Combined v -> IO ()
--- commitCombined trans@(Transaction ref) MvccMap{..} = do
---   transData@TransactionData{..} <- readIORef ref
---   let
---     currentStatus = transData ^. #status
---     sizeDiff = Map.size (unModifyLog modifyLog) - Set.size (coerce deleteLog)
---   case currentStatus of
---     Prepared -> do
---       writeIORef ref $! set #status Committed transData
---       when (sizeDiff < 0)
---         $ replicateM_ (negate sizeDiff)
---         $ forkIO
---         $ writeChan (queueExtention ^. #pullLock) ()
---       modifyMVar_ transactionsQueue (\seq -> pure $! seq |> trans)
---       when (sizeDiff > 0)
---         $ replicateM_ sizeDiff
---         $ writeChan (queueExtention ^. #pullLock) ()
---       pure Nothing
---     _ ->
---       pure $ Just $ WrongTransStatusChange currentStatus Committed
+commitCombined :: TransactionID -> MvccMap Combined v -> IO ()
+commitCombined transId MvccMap{..} = do
+  UncommittedTransactions{..} <- readTVarIO uncommitted
+  ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
+    $ Map.lookup (coerce transId) transactions
+  transData@TransactionData{..} <- readIORef ref
+  let currentStatus = transData ^. #status
+  when (currentStatus /= Prepared)
+    $ throwIO
+    $ WrongTransStatusChange currentStatus Committed
+  atomically $ do
+    modifyTVar' committed
+      $ over #transactions (Map.insert (coerce transId) transData)
+      . over #nextKey (updateIfNeed $ coerce transId)
+    modifyTVar' uncommitted
+      $ over #transactions $ Map.delete $ coerce transId
+    when (Map.size (unModifyLog modifyLog) > 0)
+      $ writeTChan (queueExtention ^. #pullLock) ()
+  where
+    updateIfNeed n Nothing = Just n
+    updateIfNeed _ x       = x
 
--- commitAsyncCombined :: Transaction v -> MvccMap Combined v -> IO ()
--- commitAsyncCombined trans@(Transaction ref) MvccMap{..} = do
---   transData@TransactionData{..} <- readIORef ref
---   let
---     currentStatus = transData ^. #status
---     sizeDiff = Map.size (unModifyLog modifyLog) - Set.size (coerce deleteLog)
---   case currentStatus of
---     Prepared -> do
---       writeIORef ref $! set #status Committed transData
---       when (sizeDiff < 0)
---         $ replicateM_ (negate sizeDiff)
---         $ forkIO
---         $ writeChan (queueExtention ^. #pullLock) ()
---       void
---         $ forkIO
---         $ modifyMVar_ transactionsQueue (\seq -> pure $! seq |> trans)
---       when (sizeDiff > 0)
---         $ void
---         $ forkIO
---         $ replicateM_ sizeDiff
---         $ writeChan (queueExtention ^. #pullLock) ()
---       pure Nothing
---     _ ->
---       pure $ Just $ WrongTransStatusChange currentStatus Committed
+commitAsyncCombined :: TransactionID -> MvccMap Combined v -> IO ()
+commitAsyncCombined transId MvccMap{..} = do
+  UncommittedTransactions{..} <- readTVarIO uncommitted
+  ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
+    $ Map.lookup (coerce transId) transactions
+  transData@TransactionData{..} <- readIORef ref
+  let currentStatus = transData ^. #status
+  when (currentStatus /= Prepared)
+    $ throwIO
+    $ WrongTransStatusChange currentStatus Committed
+  void $ forkIO $ atomically $ do
+    modifyTVar' committed
+      $ over #transactions (Map.insert (coerce transId) (transData & #status .~ Committed))
+      . over #nextKey (updateIfNeed $ coerce transId)
+    modifyTVar' uncommitted
+      $ over #transactions $ Map.delete $ coerce transId
+    when (Map.size (unModifyLog modifyLog) > 0)
+      $ writeTChan (queueExtention ^. #pullLock) ()
+  where
+    updateIfNeed n Nothing = Just n
+    updateIfNeed _ x       = x
 
 -- WARNING: Vacuum is not concurrent operation.
 -- Only one thread shoud run vacuum for singular Map.

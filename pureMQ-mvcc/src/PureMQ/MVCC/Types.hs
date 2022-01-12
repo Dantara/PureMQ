@@ -1,13 +1,13 @@
 module PureMQ.MVCC.Types where
 
 import           Control.Concurrent
+import           Control.Concurrent.STM.TChan
 import           Control.Concurrent.STM.TVar
-import           Data.IntMap                 (IntMap)
-import qualified Data.IntMap                 as Map
-import           Data.IntSet                 (IntSet)
-import qualified Data.IntSet                 as Set
-import           Data.Sequence               (Seq (..))
-import qualified Data.Sequence               as Seq
+import           Control.Exception
+import           Data.IntMap                  (IntMap)
+import qualified Data.IntMap                  as Map
+import           Data.IntSet                  (IntSet)
+import qualified Data.IntSet                  as Set
 import           GHC.Generics
 import           GHC.IORef
 import           PureMQ.Types
@@ -20,45 +20,50 @@ data MapMode
   | Combined
   deriving (Eq, Ord, Show, Generic)
 
-type family WithMode (m :: MapMode) where
-  WithMode KeyValue = ()
-  WithMode Combined = QueueExtention
+type family WithModeGlobal (m :: MapMode) where
+  WithModeGlobal KeyValue = ()
+  WithModeGlobal Combined = QueueExtention
+
+type family WithModeLocal (m :: MapMode) where
+  WithModeLocal KeyValue = ()
+  WithModeLocal Combined = TChan ()
 
 type KeyValueMap v = MvccMap KeyValue v
 type CombinedMap v = MvccMap Combined v
 
 data MvccMap (m :: MapMode) v = MvccMap
   { primaryMap     :: IORef (IntMap v)
-  , uncommitted    :: TVar (UncommittedTransactions v)
-  , committed      :: TVar (CommittedTransactions v)
-  , queueExtention :: WithMode m }
+  , uncommitted    :: TVar (UncommittedTransactions m v)
+  , committed      :: TVar (CommittedTransactions m v)
+  , queueExtention :: WithModeGlobal m }
   deriving Generic
 
 data QueueExtention = QueueExtention
   { nextKey  :: MVar Key
-  , pullLock :: Chan () }
+  , pullLock :: TChan () }
   deriving Generic
 
-data UncommittedTransactions v = UncommittedTransactions
-  { nextKey      :: Int
-  , transactions :: IntMap (Transaction v) }
+data UncommittedTransactions m v = UncommittedTransactions
+  { nextKey      :: Int -- ^ Key for a new transaction
+  , transactions :: IntMap (Transaction m v) }
   deriving Generic
 
-data CommittedTransactions v = CommittedTransactions
-  { nextKey      :: Maybe Int
-  , transactions :: IntMap (TransactionData v) }
+data CommittedTransactions m v = CommittedTransactions
+  { nextKey      :: Maybe Int -- ^ Key of oldest transaction
+  , transactions :: IntMap (TransactionData m v) }
   deriving Generic
 
-newtype Transaction v = Transaction
-  { unTransaction :: IORef (TransactionData v) }
+newtype Transaction m v = Transaction
+  { unTransaction :: IORef (TransactionData m v) }
   deriving Generic
 
-data TransactionData v = TransactionData
+data TransactionData m v = TransactionData
   { modifyLog      :: ModifyLog v
   , deleteLog      :: DeleteLog
   , isolationLevel :: IsolationLevel
   , ranges         :: [(Maybe Int, Maybe Int)]
-  , status         :: TransStatus }
+  , status         :: TransStatus
+  , pullLock       :: WithModeLocal m }
   deriving Generic
 
 newtype ModifyLog v = ModifyLog
@@ -68,3 +73,9 @@ newtype ModifyLog v = ModifyLog
 newtype DeleteLog = DeleteLog
   { unDeleteLog :: IntSet }
   deriving Generic
+
+data MapError
+  = NotSupportedOperationOnLevel IsolationLevel
+  deriving (Eq, Ord, Show)
+
+instance Exception MapError
