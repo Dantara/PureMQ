@@ -28,3 +28,13 @@ data IsolationLevel
   = ReadCommited
   | Serializable
   deriving (Eq, Ord, Show, Generic)
+
+data Database = Database -- Will contain multiple storages inside
+
+newtype StorageName k v = StorageName
+  { unwrapStorageName :: Text }
+  deriving (Eq, Ord, Show, Generic)
+
+data NoKey -- Specialized alternative for Data.Void
+
+class StorageEff (e :: (* -> *) -> * -> *)

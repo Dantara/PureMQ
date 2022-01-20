@@ -1,39 +1,58 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-
 module Control.Effect.Storage.KeyValue where
 
 import           Control.Algebra
-import           Control.Effect.Storage.Common
 import           Data.Kind
+import           PureMQ.Types
 
-data KeyValueStorage k v (m :: Type -> Type) r where
-  Lookup :: k -> KeyValueStorage k v m (Maybe v)
-  Insert :: k -> v -> KeyValueStorage k v m ()
-  Modify :: k -> (v -> v) -> KeyValueStorage k v m ()
-  Delete :: k -> KeyValueStorage k v m ()
+data KeyValueStorage (m :: Type -> Type) r where
+  Lookup
+    :: Database
+    -> StorageName k v
+    -> k
+    -> KeyValueStorage m (Maybe v)
 
-instance StorageEff (KeyValueStorage k v)
+  Insert
+    :: Database
+    -> StorageName k v
+    -> k
+    -> v
+    -> KeyValueStorage m ()
+
+  Modify
+    :: Database
+    -> StorageName k v
+    -> k
+    -> (v -> v)
+    -> KeyValueStorage m ()
+
+  Delete
+    :: Database
+    -> StorageName k v
+    -> k
+    -> KeyValueStorage m ()
+
+instance StorageEff KeyValueStorage
 
 lookup
   :: forall k v m sig
-  .  Has (KeyValueStorage k v) sig m
-  => k -> m (Maybe v)
-lookup k = send $ Lookup k
+  .  Has KeyValueStorage sig m
+  => Database -> StorageName k v -> k -> m (Maybe v)
+lookup db s k = send $ Lookup db s k
 
 insert
   :: forall k v m sig
-  .  Has (KeyValueStorage k v) sig m
-  => k -> v -> m ()
-insert k v = send $ Insert k v
+  .  Has KeyValueStorage sig m
+  => Database -> StorageName k v -> k -> v -> m ()
+insert db s k v = send $ Insert db s k v
 
 modify
   :: forall k v m sig
-  .  Has (KeyValueStorage k v) sig m
-  => k -> (v -> v) -> m ()
-modify k f = send $ Modify k f
+  .  Has KeyValueStorage sig m
+  => Database -> StorageName k v -> k -> (v -> v) -> m ()
+modify db s k f = send $ Modify db s k f
 
 delete
   :: forall k v m sig
-  .  Has (KeyValueStorage k v) sig m
-  => k -> m ()
-delete k = send $ Delete @_ @v k
+  .  Has KeyValueStorage sig m
+  => Database -> StorageName k v -> k -> m ()
+delete db s k = send $ Delete db s k

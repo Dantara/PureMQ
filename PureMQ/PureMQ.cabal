@@ -7,9 +7,10 @@ maintainer:         n.aleshchenko@tinkoff.ru
 
 library
     exposed-modules:    Control.Effect.Storage
-                      , Control.Effect.Storage.Common
                       , Control.Effect.Storage.KeyValue
                       , Control.Effect.Storage.Queue
+                      , Control.Effect.Storage.Single.KeyValue
+                      , Control.Effect.Storage.Single.Queue
                       , Control.Effect.Transaction
                       , Control.Effect.Transaction.Low
                       , PureMQ.Types

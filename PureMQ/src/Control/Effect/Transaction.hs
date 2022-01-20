@@ -4,7 +4,6 @@
 module Control.Effect.Transaction where
 
 import           Control.Algebra
-import           Control.Effect.Storage.Common
 import qualified Control.Effect.Transaction.Low as Low
 import           Data.Kind
 import           Data.Text                      (Text)
