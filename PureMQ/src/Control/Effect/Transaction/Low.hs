@@ -9,43 +9,46 @@ import           GHC.Generics
 import           PureMQ.Types
 
 data Transaction (m :: Type -> Type) r where
-  InitPrepare :: Transaction m (Either TransactionError TransactionID)
+  InitPrepare
+    :: IsolationLevel
+    -> Transaction m TransactionID
 
   CommitPrepare
     :: TransactionID
-    -> Transaction m (Maybe TransactionError)
+    -> Transaction m ()
 
   Commit
     :: TransactionID
-    -> Transaction m (Maybe TransactionError)
+    -> Transaction m ()
 
   Rollback
     :: TransactionID
-    -> Transaction m (Maybe TransactionError)
+    -> Transaction m ()
 
 initPrepare
   :: forall m sig
   .  Has Transaction sig m
-  => m (Either TransactionError TransactionID)
-initPrepare = send InitPrepare
+  => IsolationLevel
+  -> m TransactionID
+initPrepare = send . InitPrepare
 
 commitPrepare
   :: forall m sig
   .  Has Transaction sig m
   => TransactionID
-  -> m (Maybe TransactionError)
+  -> m ()
 commitPrepare = send . CommitPrepare
 
 commit
   :: forall m sig
   .  Has Transaction sig m
   => TransactionID
-  -> m (Maybe TransactionError)
+  -> m ()
 commit = send . Commit
 
 rollback
   :: forall m sig
   .  Has Transaction sig m
   => TransactionID
-  -> m (Maybe TransactionError)
+  -> m ()
 rollback = send . Rollback
