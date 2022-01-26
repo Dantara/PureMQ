@@ -74,7 +74,7 @@ insert k v transId MvccMap{..} = do
   let updated = coerce $ Map.insert (coerce k) v (coerce modifyLog)
   writeIORef ref $! set #modifyLog updated transData
 
-modify :: Key -> (v -> v) -> TransactionID -> MvccMap m v -> IO (Maybe TransactionError)
+modify :: Key -> (v -> v) -> TransactionID -> MvccMap m v -> IO ()
 modify k f transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
   ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
@@ -82,15 +82,10 @@ modify k f transId MvccMap{..} = do
   transData@TransactionData{..} <- readIORef ref
   when (status /= Initiated)
     $ throwIO $ WrongTransStatus status
-  case status of
-    Initiated -> do
-      let updated = coerce $ Map.adjust f (coerce k) (coerce modifyLog)
-      writeIORef ref $! set #modifyLog updated transData
-      pure Nothing
-    status ->
-      pure $ Just $ WrongTransStatus status
+  let updated = coerce $ Map.adjust f (coerce k) (coerce modifyLog)
+  writeIORef ref $! set #modifyLog updated transData
 
-delete :: Key -> TransactionID -> MvccMap m v -> IO (Maybe TransactionError)
+delete :: Key -> TransactionID -> MvccMap m v -> IO ()
 delete k transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
   ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
@@ -98,13 +93,8 @@ delete k transId MvccMap{..} = do
   transData@TransactionData{..} <- readIORef ref
   when (status /= Initiated)
     $ throwIO $ WrongTransStatus status
-  case status of
-    Initiated -> do
-      let
-        deleteLog = coerce $ Set.insert (coerce k) (coerce deleteLog)
-        modifyLog = coerce $ Map.delete (coerce k) (unModifyLog modifyLog)
-      writeIORef ref $! set #deleteLog deleteLog transData
-      writeIORef ref $! set #modifyLog modifyLog transData
-      pure Nothing
-    status ->
-      pure $ Just $ WrongTransStatus status
+  let
+    deleteLog = coerce $ Set.insert (coerce k) (coerce deleteLog)
+    modifyLog = coerce $ Map.delete (coerce k) (unModifyLog modifyLog)
+  writeIORef ref $! set #deleteLog deleteLog transData
+  writeIORef ref $! set #modifyLog modifyLog transData

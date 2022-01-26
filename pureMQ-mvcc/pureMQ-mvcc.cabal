@@ -6,7 +6,9 @@ author:             Nikita Aleshchenko
 maintainer:         n.aleshchenko@tinkoff.ru
 
 library
-    exposed-modules:    Control.Carrier.Transaction.Low
+    exposed-modules:    Control.Carrier.Storage.Single.KeyValue
+                      , Control.Carrier.Storage.Single.Queue
+                      , Control.Carrier.Transaction.Low
                       , PureMQ.MVCC.Init
                       , PureMQ.MVCC.KeyValue
                       , PureMQ.MVCC.Queue
@@ -20,6 +22,7 @@ library
                       , generic-lens
                       , microlens
                       , text
+                      , transformers
                       , unagi-chan
                       , stm
                       , pureMQ
