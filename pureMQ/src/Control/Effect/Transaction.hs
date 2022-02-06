@@ -30,24 +30,18 @@ type family Storages xs sig m where
 data Transaction (m :: Type -> Type) r where
   Prepare
     :: ( Has CancelTransaction sig t
-      , Storages effs sig m
-      , Storages effs sig t )
+       , Storages effs sig m
+       , Storages effs sig t )
     => t a
-    -> Transaction m (Either TransactionError TransactionID)
+    -> Transaction m (Either TransactionError (PreparedTransaction a))
 
   Commit
-    :: TransactionID
-    -> Transaction m (Maybe TransactionError)
+    :: PreparedTransaction a
+    -> Transaction m (Either TransactionError a)
 
   Rollback
-    :: TransactionID
+    :: PreparedTransaction a
     -> Transaction m (Maybe TransactionError)
-
-  -- Later, we want to have the following interface for commit:
-  -- >>> Commit
-  -- >>>  :: TransactionID
-  -- >>>  -> Transaction effs a m (Either TransactionError a)
-
 
 prepare
   :: forall effs a t m sig
@@ -56,17 +50,17 @@ prepare
      , Storages effs sig m
      , Storages effs sig t
      , Has Low.Transaction sig m )
-  => t a -> m (Either TransactionError TransactionID)
+  => t a -> m (Either TransactionError (PreparedTransaction a))
 prepare = send . Prepare @_ @_ @effs
 
 commit
   :: Has Transaction sig m
-  => TransactionID
-  -> m (Maybe TransactionError)
+  => PreparedTransaction a
+  -> m (Either TransactionError a)
 commit = send . Commit
 
 rollback
   :: Has Transaction sig m
-  => TransactionID
+  => PreparedTransaction a
   -> m (Maybe TransactionError)
 rollback = send . Rollback

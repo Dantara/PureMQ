@@ -3,6 +3,7 @@ module Control.Effect.Storage.Queue where
 import           Control.Algebra
 import           Control.Effect.Reader
 import           Data.Kind
+import           PureMQ.Database
 import           PureMQ.Types
 
 data QueueStorage (m :: Type -> Type) r where

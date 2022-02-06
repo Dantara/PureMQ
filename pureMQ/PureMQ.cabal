@@ -13,10 +13,12 @@ library
                       , Control.Effect.Storage.Single.Queue
                       , Control.Effect.Transaction
                       , Control.Effect.Transaction.Low
+                      , PureMQ.Database
                       , PureMQ.Types
     build-depends:      base >= 4.12.0.0
                       , containers
                       , fused-effects
+                      , fused-effects-exceptions
                       , bytestring
                       , generic-lens
                       , microlens

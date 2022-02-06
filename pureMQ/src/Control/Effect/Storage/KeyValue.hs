@@ -2,6 +2,7 @@ module Control.Effect.Storage.KeyValue where
 
 import           Control.Algebra
 import           Data.Kind
+import           PureMQ.Database
 import           PureMQ.Types
 
 data KeyValueStorage (m :: Type -> Type) r where
