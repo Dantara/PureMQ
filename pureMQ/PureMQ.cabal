@@ -14,6 +14,7 @@ library
                       , Control.Effect.Transaction
                       , Control.Effect.Transaction.Low
                       , PureMQ.Database
+                      , PureMQ.GlobalTransactions
                       , PureMQ.Types
     build-depends:      base >= 4.12.0.0
                       , containers
@@ -22,6 +23,7 @@ library
                       , bytestring
                       , generic-lens
                       , microlens
+                      , microlens-th
                       , text
     hs-source-dirs:     src
     default-language:   Haskell2010

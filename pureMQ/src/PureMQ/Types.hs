@@ -6,7 +6,7 @@ import           GHC.Generics
 
 newtype TransactionID = TransactionID
   { unTrasactionID :: Int }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, Bounded, Enum, Num)
 
 data TransactionError
   = WrongTransStatusChange TransStatus TransStatus
