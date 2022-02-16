@@ -1,10 +1,17 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module PureMQ.GlobalTransactions where
 
 import           Control.Concurrent.MVar
+import           Control.Effect.Transaction.Low as T
 import           Control.Exception
+import           Data.Coerce
 import           Data.IORef
-import           Data.Map.Strict         (Map)
-import qualified Data.Map.Strict         as Map
+import           Data.Map.Strict                (Map)
+import qualified Data.Map.Strict                as Map
+import           Data.Maybe                     (fromMaybe)
+import           Data.Typeable
 import           GHC.Generics
 import           Lens.Micro
 import           PureMQ.Database
@@ -51,7 +58,7 @@ lookupLocalTransactionId
   :: GTransactions
   -> TransactionID
   -> DatabaseId
-  -> StorageName'
+  -> StorageName k v
   -> IO (Maybe TransactionID)
 lookupLocalTransactionId gTranses tId dId name
   = handle (\(e :: GTransactionError) -> pure Nothing) do
@@ -60,5 +67,108 @@ lookupLocalTransactionId gTranses tId dId name
       $ Map.lookup tId gTransesMap
     gTransMap <- readIORef $ gTrans ^. #unGTransaction
     gTransData <- maybe (throwIO LTransactionIsNotFound) pure
-      $ Map.lookup (dId, name) gTransMap
+      $ Map.lookup (dId, coerce name) gTransMap
     pure $ Just $ gTransData ^. #localTransactionId
+
+mkGTransactionData
+  :: TransactionCarrier
+  -> TransactionID
+  -> GTransactionData
+mkGTransactionData (TransactionCarrier _ runC) tId
+  = GTransactionData
+  { localTransactionId = tId
+  , commitPrepare = runC $ T.commitPrepare tId
+  , commit = runC $ T.commit tId
+  , rollback = runC $ T.rollback tId }
+
+insertLocalTransactionId
+  :: (Typeable k, Typeable v)
+  => GTransactions
+  -> TransactionID -- global
+  -> Database
+  -> StorageName k v
+  -> TransactionID -- local
+  -> IO ()
+insertLocalTransactionId gTranses gtId db name ltId = do
+  gTransesMap <- readMVar $ gTranses ^. #unGTransactions
+  gTrans <- maybe (throwIO GTransactionIsNotFound) pure
+    $ Map.lookup gtId gTransesMap
+  gTransMap <- readIORef $ gTrans ^. #unGTransaction
+  transC <- getTransactionCarrier db name
+  let gTransData = mkGTransactionData transC ltId
+  atomicWriteIORef (gTrans ^. #unGTransaction)
+    $! Map.insert (db ^. #databaseId, coerce name) gTransData gTransMap
+
+getLocalTransactionId
+  :: (Typeable k, Typeable v)
+  => GTransactions
+  -> TransactionID
+  -> Maybe IsolationLevel
+  -> Database
+  -> StorageName k v
+  -> IO TransactionID
+getLocalTransactionId gTranses gtId mLvl db name = do
+  gTransesMap <- readMVar $ gTranses ^. #unGTransactions
+  gTrans <- maybe (throwIO GTransactionIsNotFound) pure
+    $ Map.lookup gtId gTransesMap
+  gTransMap <- readIORef $ gTrans ^. #unGTransaction
+  let mTransData = Map.lookup (db ^. #databaseId, coerce name) gTransMap
+  case mTransData of
+    Just gTransData ->
+      pure $ gTransData ^. #localTransactionId
+    Nothing -> do
+      transC <- getTransactionCarrier db name
+      ltId <- initPrepare' transC
+      let gTransData = mkGTransactionData transC ltId
+      atomicWriteIORef (gTrans ^. #unGTransaction)
+        $! Map.insert (db ^. #databaseId, coerce name) gTransData gTransMap
+      pure ltId
+  where
+    initPrepare' (TransactionCarrier _ runC)
+      = runC $ initPrepare (fromMaybe ReadCommited mLvl)
+
+commitAllPrepare
+  :: GTransactions
+  -> TransactionID
+  -> IO ()
+commitAllPrepare gTranses tId = do
+  gTransesMap <- readMVar $ gTranses ^. #unGTransactions
+  gTrans <- maybe (throwIO GTransactionIsNotFound) pure
+    $ Map.lookup tId gTransesMap
+  gTransMap <- readIORef $ gTrans ^. #unGTransaction
+  let
+    gTransDatas = Map.elems gTransMap
+    commits = gTransDatas ^.. traversed . #commitPrepare
+    rollbacks = gTransDatas ^.. traversed . #rollback
+  catch (sequence_ commits)
+    $ \(e :: TransactionError) -> sequence_ rollbacks >> throwIO e
+
+commitAll
+  :: GTransactions
+  -> TransactionID
+  -> IO ()
+commitAll gTranses tId = do
+  gTransesMap <- readMVar $ gTranses ^. #unGTransactions
+  gTrans <- maybe (throwIO GTransactionIsNotFound) pure
+    $ Map.lookup tId gTransesMap
+  gTransMap <- readIORef $ gTrans ^. #unGTransaction
+  let
+    gTransDatas = Map.elems gTransMap
+    commits = gTransDatas ^.. traversed . #commit
+    rollbacks = gTransDatas ^.. traversed . #rollback
+  catch (sequence_ commits)
+    $ \(e :: TransactionError) -> sequence_ rollbacks >> throwIO e
+
+rollbackAll
+  :: GTransactions
+  -> TransactionID
+  -> IO ()
+rollbackAll gTranses tId = do
+  gTransesMap <- readMVar $ gTranses ^. #unGTransactions
+  gTrans <- maybe (throwIO GTransactionIsNotFound) pure
+    $ Map.lookup tId gTransesMap
+  gTransMap <- readIORef $ gTrans ^. #unGTransaction
+  let
+    gTransDatas = Map.elems gTransMap
+    rollbacks = gTransDatas ^.. traversed . #rollback
+  sequence_ rollbacks

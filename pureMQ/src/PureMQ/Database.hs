@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module PureMQ.Database where
 
 import           Control.Algebra
@@ -6,6 +7,7 @@ import           Control.Effect.Lift
 import           Control.Effect.Storage.Single.KeyValue
 import           Control.Effect.Storage.Single.Queue
 import           Control.Effect.Transaction.Low         (Transaction)
+import qualified Control.Effect.Transaction.Low         as T
 import           Control.Exception                      (Exception (..))
 import           Data.Coerce
 import           Data.Function                          (on)
@@ -14,6 +16,7 @@ import           Data.Kind
 import           Data.Map.Strict                        (Map)
 import qualified Data.Map.Strict                        as Map
 import           Data.Maybe
+import           Data.Proxy
 import           Data.Text                              (Text)
 import           Data.Typeable                          (eqT)
 import           GHC.Exception
@@ -57,14 +60,16 @@ data Carriers k v = StorageCarriers
 
 data StorageCarrier t where
   StorageCarrier
-    :: Has t sig m
+    :: (Algebra sig m, Has t sig m)
     => (forall a . Maybe TransactionID -> m a -> IO a)
     -> StorageCarrier t
 
 data TransactionCarrier where
   TransactionCarrier
-    :: Has Transaction sig m
-    => (forall a . m a -> IO a)
+    :: ( Algebra sig m
+       , Has Transaction sig m )
+    => Proxy m
+    -> (forall a . m a -> IO a)
     -> TransactionCarrier
 
 data DatabaseException
@@ -78,7 +83,9 @@ data DatabaseException
 instance Exception DatabaseException
 
 runStorageCarrier
-  :: Has t sig m
+  :: forall t m sig a
+  .  ( Algebra sig m
+     , Has t sig m )
   => StorageCarrier t
   -> Maybe TransactionID
   -> m a
@@ -87,11 +94,13 @@ runStorageCarrier (StorageCarrier f) tid ma
   = f tid $ unsafeCoerce ma -- I hope it will work
 
 runTransactionCarrier
-  :: Has Transaction sig m
+  :: forall m sig a
+  .  ( Algebra sig m
+     , Has Transaction sig m )
   => TransactionCarrier
   -> m a
   -> IO a
-runTransactionCarrier (TransactionCarrier f) ma
+runTransactionCarrier (TransactionCarrier _ f) ma
   = f $ unsafeCoerce ma
 
 runKeyValueStorage
@@ -140,7 +149,7 @@ runQueueStorage db name tid action = do
   sendIO $ runStorageCarrier queueC tid action
   where
     mGetQueueCarrier :: Storage -> m (Maybe (StorageCarrier (QueueStorage v)))
-    mGetQueueCarrier (Storage (carriers :: Carriers k' v'))
+    mGetQueueCarrier storage@(Storage (carriers :: Carriers k' v'))
       = case (eqT @k @k', eqT @k @NoKey, eqT @v @v') of
           (Just Refl, _, Just Refl) -> pure $ carriers ^. #queueCarrier
           (_, Just Refl, Just Refl) -> pure $ carriers ^. #queueCarrier
@@ -157,14 +166,25 @@ runTransaction
   -> t a
   -> m a
 runTransaction db name action = do
+  transC <- getTransactionCarrier db name
+  sendIO $ runTransactionCarrier transC action
+
+getTransactionCarrier
+  :: forall k v a m sig
+  . ( Typeable k
+    , Typeable v
+    , Has (Lift IO) sig m)
+  => Database
+  -> StorageName k v
+  -> m TransactionCarrier
+getTransactionCarrier db name = do
   storage <- maybe (throwIO StorageIsNotFound) pure
     $ Map.lookup (coerce name)
     $ db ^. #storages
-  transC <- getTransactionC storage
-  sendIO $ runTransactionCarrier transC action
+  getCarrier storage
   where
-    getTransactionC :: Storage -> m TransactionCarrier
-    getTransactionC (Storage (carriers :: Carriers k' v'))
+    getCarrier :: Storage -> m TransactionCarrier
+    getCarrier (Storage (carriers :: Carriers k' v'))
       = case (eqT @k @k', eqT @k @NoKey, eqT @v @v') of
           (Just Refl, _, Just Refl) -> pure $ carriers ^. #transCarrier
           (_, Just Refl, Just Refl) -> pure $ carriers ^. #transCarrier
