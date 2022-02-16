@@ -34,14 +34,14 @@ lookup key transId MvccMap{..} = handle (\WasDeleted -> pure Nothing) do
     $ throwIO $ WrongTransStatus $ transData ^. #status
   CommittedTransactions{..} <- readTVarIO committed
   mResult <- case (transData ^. #isolationLevel, nextKey) of
-    (ReadCommited, Just splitter) -> do
+    (ReadCommitted, Just splitter) -> do
       let
         (youngTs, oldTs)
           = over both (fmap snd . Map.toDescList)
           $ Map.partitionWithKey (\k _ -> k < splitter) transactions
         transDataList = transData : youngTs <> oldTs
       transDatasLookup transDataList
-    (ReadCommited, Nothing) ->
+    (ReadCommitted, Nothing) ->
       singleTransDataLookup transData
     (Serializable, _) -> do
       let

@@ -33,7 +33,7 @@ initPrepare isolationLevel MvccMap{..} mkLock = do
     modifyLog = ModifyLog $! Map.empty
     deleteLog = DeleteLog $! Set.empty
     ranges
-      | isolationLevel == ReadCommited = []
+      | isolationLevel == ReadCommitted = []
       | isolationLevel == Serializable = filter (/= (Nothing, Nothing))
           [ ( fst <$> Map.lookupMin transactions -- A bit messy
             , nextKey >>= flip Map.lookupLT transactions <&> fst )

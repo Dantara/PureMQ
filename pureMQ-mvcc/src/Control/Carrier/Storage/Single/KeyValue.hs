@@ -15,7 +15,7 @@ import           PureMQ.MVCC.Types                      hiding
 import           PureMQ.Types
 
 newtype KeyValueSingleStorageC (v :: *) m a = KeyValueSingleStorageC
-  { runKeyValueSingleStorage :: m a }
+  { runKeyValueSingleStorageC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
 instance
@@ -41,15 +41,14 @@ instance
         L (Delete k) -> fmap (<$ ctx) $ withTransaction $ \tId -> do
           mvccMap <- ask @(MvccMap mode v)
           sendIO $ I.delete k tId mvccMap
-        R other      -> alg (runKeyValueSingleStorage . hdl) other ctx
+        R other      -> alg (runKeyValueSingleStorageC . hdl) other ctx
         where
-          withTransaction action = ask >>= \mId ->
-            case mId of
-              Just tId ->
-                action tId
-              Nothing -> do
-                tId <- initPrepare ReadCommited
-                r <- action tId
-                commitPrepare tId
-                commit tId
-                pure r
+          withTransaction action = ask >>= \case
+            Just tId ->
+              action tId
+            Nothing -> do
+              tId <- initPrepare ReadCommitted
+              r <- action tId
+              commitPrepare tId
+              commit tId
+              pure r

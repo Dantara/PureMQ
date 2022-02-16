@@ -25,7 +25,7 @@ data TransStatus
   deriving (Eq, Ord, Show, Generic)
 
 data IsolationLevel
-  = ReadCommited
+  = ReadCommitted
   | Serializable
   deriving (Eq, Ord, Show, Generic)
 

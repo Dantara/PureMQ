@@ -125,7 +125,7 @@ getLocalTransactionId gTranses gtId mLvl db name = do
       pure ltId
   where
     initPrepare' (TransactionCarrier _ runC)
-      = runC $ initPrepare (fromMaybe ReadCommited mLvl)
+      = runC $ initPrepare (fromMaybe ReadCommitted mLvl)
 
 commitAllPrepare
   :: GTransactions

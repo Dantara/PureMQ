@@ -13,7 +13,7 @@ import           PureMQ.MVCC.Types              hiding (Transaction (..))
 import           PureMQ.Types
 
 newtype KeyValueSyncTransactionC m a = KeyValueSyncTransactionC
-  { runKeyValueSyncTransaction :: m a }
+  { runKeyValueSyncTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
 instance
@@ -29,13 +29,13 @@ instance
         L (CommitPrepare id') -> fmap (<$ ctx) $ withMap $ sendIO . commitPrepare id'
         L (Commit id')        -> fmap (<$ ctx) $ withMap $ sendIO . commitKeyValue id'
         L (Rollback id')      -> fmap (<$ ctx) $ withMap $ sendIO . cancelPrepare id'
-        R other               -> alg (runKeyValueSyncTransaction . hdl) other ctx
+        R other               -> alg (runKeyValueSyncTransactionC . hdl) other ctx
         where
           withMap :: (KeyValueMap v -> m a) -> m a
           withMap = (ask @(KeyValueMap v) >>=)
 
 newtype KeyValueAsyncTransactionC m a = KeyValueAsyncTransactionC
-  { runKeyValueAsyncTransaction :: m a }
+  { runKeyValueAsyncTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
 instance
@@ -51,13 +51,13 @@ instance
         L (CommitPrepare id') -> fmap (<$ ctx) $ withMap $ sendIO . commitPrepare id'
         L (Commit id')        -> fmap (<$ ctx) $ withMap $ sendIO . commitAsyncKeyValue id'
         L (Rollback id')      -> fmap (<$ ctx) $ withMap $ sendIO . cancelPrepare id'
-        R other               -> alg (runKeyValueAsyncTransaction . hdl) other ctx
+        R other               -> alg (runKeyValueAsyncTransactionC . hdl) other ctx
         where
           withMap :: (KeyValueMap v -> m a) -> m a
           withMap = (ask @(KeyValueMap v) >>=)
 
 newtype CombinedSyncTransactionC m a = CombinedSyncTransactionC
-  { runCombinedSyncTransaction :: m a }
+  { runCombinedSyncTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
 instance
@@ -73,13 +73,13 @@ instance
         L (CommitPrepare id') -> fmap (<$ ctx) $ withMap $ sendIO . commitPrepare id'
         L (Commit id')        -> fmap (<$ ctx) $ withMap $ sendIO . commitCombined id'
         L (Rollback id')      -> fmap (<$ ctx) $ withMap $ sendIO . cancelPrepare id'
-        R other               -> alg (runCombinedSyncTransaction . hdl) other ctx
+        R other               -> alg (runCombinedSyncTransactionC . hdl) other ctx
         where
           withMap :: (CombinedMap v -> m a) -> m a
           withMap = (ask @(CombinedMap v) >>=)
 
 newtype CombinedAsyncTransactionC m a = CombinedAsyncTransactionC
-  { runCombinedAsyncTransaction :: m a }
+  { runCombinedAsyncTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
 instance
@@ -95,7 +95,7 @@ instance
         L (CommitPrepare id') -> fmap (<$ ctx) $ withMap $ sendIO . commitPrepare id'
         L (Commit id')        -> fmap (<$ ctx) $ withMap $ sendIO . commitAsyncCombined id'
         L (Rollback id')      -> fmap (<$ ctx) $ withMap $ sendIO . cancelPrepare id'
-        R other               -> alg (runCombinedAsyncTransaction . hdl) other ctx
+        R other               -> alg (runCombinedAsyncTransactionC . hdl) other ctx
         where
           withMap :: (CombinedMap v -> m a) -> m a
           withMap = (ask @(CombinedMap v) >>=)

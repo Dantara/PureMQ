@@ -14,7 +14,7 @@ import           PureMQ.MVCC.Types                   hiding (Transaction (..))
 import           PureMQ.Types
 
 newtype QueueSingleStorageC v m a = QueueSingleStorageC
-  { runQueueSingleStorage :: m a }
+  { runQueueSingleStorageC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
 instance
@@ -43,15 +43,14 @@ instance
         L PeekIfExist -> fmap (<$ ctx) $ withTransaction $ \tId -> do
           mvccMap <- ask @(CombinedMap v)
           sendIO $ I.peekIfExist tId mvccMap
-        R other      -> alg (runQueueSingleStorage . hdl) other ctx
+        R other      -> alg (runQueueSingleStorageC . hdl) other ctx
         where
-          withTransaction action = ask >>= \mId ->
-            case mId of
-              Just tId ->
-                action tId
-              Nothing -> do
-                tId <- initPrepare ReadCommited
-                r <- action tId
-                commitPrepare tId
-                commit tId
-                pure r
+          withTransaction action = ask >>= \case
+            Just tId ->
+              action tId
+            Nothing -> do
+              tId <- initPrepare ReadCommitted
+              r <- action tId
+              commitPrepare tId
+              commit tId
+              pure r

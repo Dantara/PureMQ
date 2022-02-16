@@ -52,12 +52,12 @@ peekIfExistWithKey transId MvccMap{..} = do
   let (mMin, deleted)
         = foldr singleTransDataPeek (Nothing, Set.empty)
         $ case (transData ^. #isolationLevel, nextKey) of
-            (ReadCommited, Just splitter) ->
+            (ReadCommitted, Just splitter) ->
               let (youngTs, oldTs)
                     = over both (fmap snd . Map.toDescList)
                     $ Map.partitionWithKey (\k _ -> k < splitter) transactions
               in transData : youngTs <> oldTs
-            (ReadCommited, Nothing) -> [transData]
+            (ReadCommitted, Nothing) -> [transData]
             (Serializable, _) -> do
               let mkPredicate (mLow, mHigh)
                     = \k _ -> maybe True (< k) mLow && maybe True (> k) mHigh
@@ -123,7 +123,7 @@ withHead process lock transId mvccMap@MvccMap{..} = do
   case (mElm, transData ^. #isolationLevel) of
     (Just elm, _) ->
       pure elm
-    (Nothing, ReadCommited) -> do
+    (Nothing, ReadCommitted) -> do
       lock $ transData ^. #pullLock
       withHead process lock transId mvccMap
     (Nothing, Serializable) ->
