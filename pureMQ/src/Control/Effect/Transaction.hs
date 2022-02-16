@@ -4,18 +4,11 @@
 module Control.Effect.Transaction where
 
 import           Control.Algebra
-import qualified Control.Effect.Transaction.Low as Low
+import           Control.Effect.Transaction.Cancel
+import qualified Control.Effect.Transaction.Low    as Low
 import           Data.Kind
-import           Data.Text                      (Text)
+import           Data.Text                         (Text)
 import           PureMQ.Types
-
-data CancelTransaction (m :: Type -> Type) r where
-  Cancel :: Text -> CancelTransaction m ()
-
-cancel
-  :: Has CancelTransaction sig m
-  => Text -> m ()
-cancel = send . Cancel
 
 type Storages
   :: [(Type -> Type) -> Type -> Type]

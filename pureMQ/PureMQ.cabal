@@ -6,18 +6,21 @@ author:             Nikita Aleshchenko
 maintainer:         n.aleshchenko@tinkoff.ru
 
 library
-    exposed-modules:    Control.Effect.Storage
+    exposed-modules:    Control.Carrier.Transaction.Cancel
+                      , Control.Effect.Storage
                       , Control.Effect.Storage.KeyValue
                       , Control.Effect.Storage.Queue
                       , Control.Effect.Storage.Single.KeyValue
                       , Control.Effect.Storage.Single.Queue
                       , Control.Effect.Transaction
+                      , Control.Effect.Transaction.Cancel
                       , Control.Effect.Transaction.Low
                       , PureMQ.Database
                       , PureMQ.GlobalTransactions
                       , PureMQ.Types
     build-depends:      base >= 4.12.0.0
                       , containers
+                      , exceptions
                       , fused-effects
                       , fused-effects-exceptions
                       , bytestring
