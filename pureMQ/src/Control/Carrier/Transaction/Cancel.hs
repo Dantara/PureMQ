@@ -11,7 +11,7 @@ import           Control.Monad.Catch               (MonadCatch, MonadThrow)
 import           PureMQ.Types
 
 newtype CancelTransactionC m a = CancelTransactionC
-  { runCancelTransaction :: m a }
+  { runCancelTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
 instance
@@ -21,4 +21,4 @@ instance
     where
       handled = case sig of
         L (Cancel msg) -> fmap (<$ ctx) $ throwIO $ TransactionWasCancelled msg
-        R other        -> alg (runCancelTransaction . hdl) other ctx
+        R other        -> alg (runCancelTransactionC . hdl) other ctx

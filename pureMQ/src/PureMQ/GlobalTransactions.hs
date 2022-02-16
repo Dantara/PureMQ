@@ -139,9 +139,7 @@ commitAllPrepare gTranses tId = do
   let
     gTransDatas = Map.elems gTransMap
     commits = gTransDatas ^.. traversed . #commitPrepare
-    rollbacks = gTransDatas ^.. traversed . #rollback
-  catch (sequence_ commits)
-    $ \(e :: TransactionError) -> sequence_ rollbacks >> throwIO e
+  sequence_ commits
 
 commitAll
   :: GTransactions
@@ -155,9 +153,7 @@ commitAll gTranses tId = do
   let
     gTransDatas = Map.elems gTransMap
     commits = gTransDatas ^.. traversed . #commit
-    rollbacks = gTransDatas ^.. traversed . #rollback
-  catch (sequence_ commits)
-    $ \(e :: TransactionError) -> sequence_ rollbacks >> throwIO e
+  sequence_ commits
 
 rollbackAll
   :: GTransactions
