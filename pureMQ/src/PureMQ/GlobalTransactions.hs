@@ -74,7 +74,7 @@ mkGTransactionData
   :: TransactionCarrier
   -> TransactionID
   -> GTransactionData
-mkGTransactionData (TransactionCarrier _ runC) tId
+mkGTransactionData (TransactionCarrier runC) tId
   = GTransactionData
   { localTransactionId = tId
   , commitPrepare = runC $ T.commitPrepare tId
@@ -124,7 +124,7 @@ getLocalTransactionId gTranses gtId mLvl db name = do
         $! Map.insert (db ^. #databaseId, coerce name) gTransData gTransMap
       pure ltId
   where
-    initPrepare' (TransactionCarrier _ runC)
+    initPrepare' (TransactionCarrier runC)
       = runC $ initPrepare (fromMaybe ReadCommitted mLvl)
 
 commitAllPrepare

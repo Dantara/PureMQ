@@ -60,16 +60,14 @@ data Carriers k v = StorageCarriers
 
 data StorageCarrier t where
   StorageCarrier
-    :: (Algebra sig m, Has t sig m)
+    :: Has t sig m
     => (forall a . Maybe TransactionID -> m a -> IO a)
     -> StorageCarrier t
 
 data TransactionCarrier where
   TransactionCarrier
-    :: ( Algebra sig m
-       , Has Transaction sig m )
-    => Proxy m
-    -> (forall a . m a -> IO a)
+    :: Has Transaction sig m
+    => (forall a . m a -> IO a)
     -> TransactionCarrier
 
 data DatabaseException
@@ -77,51 +75,25 @@ data DatabaseException
   | StorageTypesAreWrong
   | KeyValueStorageIsNotSupported
   | QueueStorageIsNotSupported
-  | CannotCastResultValue
   deriving (Eq, Ord, Show, Generic)
 
 instance Exception DatabaseException
 
-runStorageCarrier
-  :: forall t m sig a
-  .  ( Algebra sig m
-     , Has t sig m )
-  => StorageCarrier t
-  -> Maybe TransactionID
-  -> m a
-  -> IO a
-runStorageCarrier (StorageCarrier f) tid ma
-  = f tid $ unsafeCoerce ma -- I hope it will work
-
-runTransactionCarrier
-  :: forall m sig a
-  .  ( Algebra sig m
-     , Has Transaction sig m )
-  => TransactionCarrier
-  -> m a
-  -> IO a
-runTransactionCarrier (TransactionCarrier _ f) ma
-  = f $ unsafeCoerce ma
-
-runKeyValueStorage
-  :: forall k v a m t sigM sigT
+getKeyValueStorageCarrier
+  :: forall k v a m sig
   . ( Typeable k
     , Typeable v
-    , Has (Lift IO) sigM m
-    , Has (KeyValueStorage k v) sigT t )
+    , Has (Lift IO) sig m )
   => Database
   -> StorageName k v
-  -> Maybe TransactionID
-  -> t a
-  -> m a
-runKeyValueStorage db name tid action = do
+  -> m (StorageCarrier (KeyValueStorage k v))
+getKeyValueStorageCarrier db name = do
   storage <- maybe (throwIO StorageIsNotFound) pure
     $ Map.lookup (coerce name)
     $ db ^. #storages
   carriers <- getCarriers storage
-  keyValC <- maybe (throwIO KeyValueStorageIsNotSupported) pure
+  maybe (throwIO KeyValueStorageIsNotSupported) pure
     $ carriers ^. #keyValCarrier
-  sendIO $ runStorageCarrier keyValC tid action
   where
     getCarriers :: Storage -> m (Carriers k v)
     getCarriers (Storage (carriers :: Carriers k' v'))
@@ -129,24 +101,20 @@ runKeyValueStorage db name tid action = do
           (Just Refl, Just Refl) -> pure carriers
           (_, _)                 -> throwIO StorageTypesAreWrong
 
-runQueueStorage
-  :: forall k v a m t sigM sigT
+getQueueStorageCarrier
+  :: forall k v m sig
   . ( Typeable k
     , Typeable v
-    , Has (Lift IO) sigM m
-    , Has (QueueStorage v) sigT t )
+    , Has (Lift IO) sig m )
   => Database
   -> StorageName k v
-  -> Maybe TransactionID
-  -> t a
-  -> m a
-runQueueStorage db name tid action = do
+  -> m (StorageCarrier (QueueStorage v))
+getQueueStorageCarrier db name = do
   storage <- maybe (throwIO StorageIsNotFound) pure
     $ Map.lookup (coerce name)
     $ db ^. #storages
   mQueueC <- mGetQueueCarrier storage
-  queueC <- maybe (throwIO QueueStorageIsNotSupported) pure mQueueC
-  sendIO $ runStorageCarrier queueC tid action
+  maybe (throwIO QueueStorageIsNotSupported) pure mQueueC
   where
     mGetQueueCarrier :: Storage -> m (Maybe (StorageCarrier (QueueStorage v)))
     mGetQueueCarrier storage@(Storage (carriers :: Carriers k' v'))
@@ -154,20 +122,6 @@ runQueueStorage db name tid action = do
           (Just Refl, _, Just Refl) -> pure $ carriers ^. #queueCarrier
           (_, Just Refl, Just Refl) -> pure $ carriers ^. #queueCarrier
           (_, _, _)                 -> throwIO StorageTypesAreWrong
-
-runTransaction
-  :: forall k v a m t sigM sigT
-  . ( Typeable k
-    , Typeable v
-    , Has (Lift IO) sigM m
-    , Has Transaction sigT t )
-  => Database
-  -> StorageName k v
-  -> t a
-  -> m a
-runTransaction db name action = do
-  transC <- getTransactionCarrier db name
-  sendIO $ runTransactionCarrier transC action
 
 getTransactionCarrier
   :: forall k v a m sig

@@ -6,7 +6,9 @@ author:             Nikita Aleshchenko
 maintainer:         n.aleshchenko@tinkoff.ru
 
 library
-    exposed-modules:    Control.Carrier.Transaction
+    exposed-modules:    Control.Carrier.Storage.KeyValue
+                      , Control.Carrier.Storage.Queue
+                      , Control.Carrier.Transaction
                       , Control.Carrier.Transaction.Cancel
                       , Control.Effect.Storage
                       , Control.Effect.Storage.KeyValue

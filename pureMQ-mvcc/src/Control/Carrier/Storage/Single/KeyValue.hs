@@ -23,7 +23,6 @@ instance
   , Has (Reader (MvccMap mode v)) sig m
   , Has (Reader (Maybe TransactionID)) sig m
   , Has Transaction sig m
-  , Monad m
   , Algebra sig m )
   => Algebra (KeyValueStorage Key v :+: sig) (KeyValueSingleStorageC v m) where
   alg hdl sig ctx = KeyValueSingleStorageC handled
