@@ -15,7 +15,6 @@ import           Lens.Micro
 import           PureMQ.Database
 import           PureMQ.GlobalTransactions
 import           PureMQ.Types
-import           Unsafe.Coerce                      (unsafeCoerce)
 
 newtype TransactionC m a = TransactionC
   { runTransactionC :: m a }
@@ -30,16 +29,19 @@ instance
   alg hdl sig ctx = TransactionC handled
     where
       handled = case sig of
-        L (Prepare (actions :: t a)) -> fmap (<$ ctx) do
+        L (Prepare actions) -> do
           gTranses <- ask
           tId <- sendIO $ initGTransaction gTranses
-          try $ handle (gTransHandler gTranses tId) do
-            result <- fmap (PreparedTransaction tId)
-              $ local (const $ Just tId)
-              $ runCancelTransactionC
-              $ unsafeCoerce @(t a) @(CancelTransactionC m a) actions
+          resp <- try $ handle (gTransHandler gTranses tId) $ do
+            result <- local (const $ Just tId)
+              $ runTransactionC
+              $ hdl . (<$ ctx)
+              $ runPrepareT actions
             sendIO $ commitAllPrepare gTranses tId
             pure result
+          pure $ case resp of
+            Left err     -> Left err <$ ctx
+            Right result -> fmap (Right . PreparedTransaction tId) result
         L (Commit prepared) -> fmap (<$ ctx) do
           gTranses <- ask
           let tId = prepared ^. #transactionId
@@ -52,7 +54,7 @@ instance
           flip catches [gRollbackHandler tId, rollbackHandler tId] do
             sendIO $ rollbackAll gTranses tId
             pure Nothing
-        R other          -> alg (runTransactionC . hdl) other ctx
+        R other -> alg (runTransactionC . hdl) other ctx
         where
           gTransHandler :: GTransactions -> TransactionID -> GTransactionError -> m a
           gTransHandler gTranses tId _ = do

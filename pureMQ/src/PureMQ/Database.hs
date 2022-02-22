@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+
 module PureMQ.Database where
 
 import           Control.Algebra
@@ -16,7 +17,6 @@ import           Data.Kind
 import           Data.Map.Strict                        (Map)
 import qualified Data.Map.Strict                        as Map
 import           Data.Maybe
-import           Data.Proxy
 import           Data.Text                              (Text)
 import           Data.Typeable                          (eqT)
 import           GHC.Exception
