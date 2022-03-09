@@ -16,20 +16,20 @@ newtype Key = Key { unKey :: Int }
   deriving (Show, Eq, Ord, Bounded, Num)
 
 data MapMode
-  = KeyValue
-  | Combined
+  = KeyValueM
+  | CombinedM
   deriving (Eq, Ord, Show, Generic)
 
 type family WithModeGlobal (m :: MapMode) where
-  WithModeGlobal KeyValue = ()
-  WithModeGlobal Combined = QueueExtention
+  WithModeGlobal KeyValueM = ()
+  WithModeGlobal CombinedM = QueueExtention
 
 type family WithModeLocal (m :: MapMode) where
-  WithModeLocal KeyValue = ()
-  WithModeLocal Combined = TChan ()
+  WithModeLocal KeyValueM = ()
+  WithModeLocal CombinedM = TChan ()
 
-type KeyValueMap v = MvccMap KeyValue v
-type CombinedMap v = MvccMap Combined v
+type KeyValueMap v = MvccMap KeyValueM v
+type CombinedMap v = MvccMap CombinedM v
 
 data MvccMap (m :: MapMode) v = MvccMap
   { primaryMap     :: IORef (IntMap v)

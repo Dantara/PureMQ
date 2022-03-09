@@ -14,8 +14,8 @@ import           PureMQ.MVCC.Types                      hiding
                                                         (Transaction (..))
 import           PureMQ.Types
 
-newtype KeyValueSingleStorageC (v :: *) m a = KeyValueSingleStorageC
-  { runKeyValueSingleStorageC :: m a }
+newtype KeyValueSingleStorageC (mode :: MapMode) (v :: *) (m :: * -> *) a
+  = KeyValueSingleStorageC { runKeyValueSingleStorageC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
 instance
@@ -24,7 +24,7 @@ instance
   , Has (Reader (Maybe TransactionID)) sig m
   , Has Transaction sig m
   , Algebra sig m )
-  => Algebra (KeyValueStorage Key v :+: sig) (KeyValueSingleStorageC v m) where
+  => Algebra (KeyValueStorage Key v :+: sig) (KeyValueSingleStorageC mode v m) where
   alg hdl sig ctx = KeyValueSingleStorageC handled
     where
       handled = case sig of

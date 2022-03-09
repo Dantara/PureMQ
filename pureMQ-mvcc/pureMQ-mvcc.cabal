@@ -6,7 +6,8 @@ author:             Nikita Aleshchenko
 maintainer:         n.aleshchenko@tinkoff.ru
 
 library
-    exposed-modules:    Control.Carrier.Storage.Single.KeyValue
+    exposed-modules:    Control.Carrier.DBControl
+                      , Control.Carrier.Storage.Single.KeyValue
                       , Control.Carrier.Storage.Single.Queue
                       , Control.Carrier.Transaction.Low
                       , PureMQ.MVCC.Init

@@ -36,4 +36,9 @@ data PreparedTransaction a = PreparedTransaction
   , result        :: a }
   deriving (Generic)
 
+data StorageType
+  = KeyValue
+  | Queue
+  deriving (Eq, Ord, Show, Generic)
+
 class StorageEff (e :: (* -> *) -> * -> *)

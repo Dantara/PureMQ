@@ -24,7 +24,7 @@ import           PureMQ.Types
 push
   :: v
   -> TransactionID
-  -> MvccMap Combined v
+  -> MvccMap CombinedM v
   -> IO ()
 push val transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
@@ -39,7 +39,7 @@ push val transId MvccMap{..} = do
 
 peekIfExistWithKey
   :: TransactionID
-  -> MvccMap Combined v
+  -> MvccMap CombinedM v
   -> IO (Maybe (Key, v))
 peekIfExistWithKey transId MvccMap{..} = do
   uncommitted' <- readTVarIO uncommitted
@@ -96,23 +96,23 @@ peekIfExistWithKey transId MvccMap{..} = do
 
 peekIfExist
   :: TransactionID
-  -> MvccMap Combined v
+  -> MvccMap CombinedM v
   -> IO (Maybe v)
 peekIfExist = (fmap (fmap snd) .) . peekIfExistWithKey
 
 pullIfExist
   :: TransactionID
-  -> MvccMap Combined v
+  -> MvccMap CombinedM v
   -> IO (Maybe v)
 pullIfExist transId mvccMap@MvccMap{..} = do
   mRes <- peekIfExistWithKey transId mvccMap
   maybe (pure Nothing) (\(k, v) -> delete k transId mvccMap >> pure (Just v)) mRes
 
 withHead
-  :: (TransactionID -> MvccMap Combined v -> IO (Maybe v))
+  :: (TransactionID -> MvccMap CombinedM v -> IO (Maybe v))
   -> (TChan () -> IO ())
   -> TransactionID
-  -> MvccMap Combined v
+  -> MvccMap CombinedM v
   -> IO v
 withHead process lock transId mvccMap@MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
@@ -131,12 +131,12 @@ withHead process lock transId mvccMap@MvccMap{..} = do
 
 peek
   :: TransactionID
-  -> MvccMap Combined v
+  -> MvccMap CombinedM v
   -> IO v
 peek = withHead peekIfExist (atomically . peekTChan)
 
 pull
   :: TransactionID
-  -> MvccMap Combined v
+  -> MvccMap CombinedM v
   -> IO v
 pull = withHead pullIfExist (atomically . readTChan)

@@ -12,7 +12,7 @@ import           PureMQ.MVCC.Transaction
 import           PureMQ.MVCC.Types              hiding (Transaction (..))
 import           PureMQ.Types
 
-newtype KeyValueSyncTransactionC m a = KeyValueSyncTransactionC
+newtype KeyValueSyncTransactionC v m a = KeyValueSyncTransactionC
   { runKeyValueSyncTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
@@ -21,7 +21,7 @@ instance
   , Has (Reader (KeyValueMap v)) sig m
   , Monad m
   , Algebra sig m )
-  => Algebra (Transaction :+: sig) (KeyValueSyncTransactionC m) where
+  => Algebra (Transaction :+: sig) (KeyValueSyncTransactionC v m) where
   alg hdl sig ctx = KeyValueSyncTransactionC handled
     where
       handled = case sig of
@@ -34,7 +34,7 @@ instance
           withMap :: (KeyValueMap v -> m a) -> m a
           withMap = (ask @(KeyValueMap v) >>=)
 
-newtype KeyValueAsyncTransactionC m a = KeyValueAsyncTransactionC
+newtype KeyValueAsyncTransactionC v m a = KeyValueAsyncTransactionC
   { runKeyValueAsyncTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
@@ -43,7 +43,7 @@ instance
   , Has (Reader (KeyValueMap v)) sig m
   , Monad m
   , Algebra sig m )
-  => Algebra (Transaction :+: sig) (KeyValueAsyncTransactionC m) where
+  => Algebra (Transaction :+: sig) (KeyValueAsyncTransactionC v m) where
   alg hdl sig ctx = KeyValueAsyncTransactionC handled
     where
       handled = case sig of
@@ -56,7 +56,7 @@ instance
           withMap :: (KeyValueMap v -> m a) -> m a
           withMap = (ask @(KeyValueMap v) >>=)
 
-newtype CombinedSyncTransactionC m a = CombinedSyncTransactionC
+newtype CombinedSyncTransactionC v m a = CombinedSyncTransactionC
   { runCombinedSyncTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
@@ -65,7 +65,7 @@ instance
   , Has (Reader (CombinedMap v)) sig m
   , Monad m
   , Algebra sig m )
-  => Algebra (Transaction :+: sig) (CombinedSyncTransactionC m) where
+  => Algebra (Transaction :+: sig) (CombinedSyncTransactionC v m) where
   alg hdl sig ctx = CombinedSyncTransactionC handled
     where
       handled = case sig of
@@ -78,7 +78,7 @@ instance
           withMap :: (CombinedMap v -> m a) -> m a
           withMap = (ask @(CombinedMap v) >>=)
 
-newtype CombinedAsyncTransactionC m a = CombinedAsyncTransactionC
+newtype CombinedAsyncTransactionC v m a = CombinedAsyncTransactionC
   { runCombinedAsyncTransactionC :: m a }
   deriving (Applicative, Functor, Monad, MonadThrow, MonadCatch)
 
@@ -87,7 +87,7 @@ instance
   , Has (Reader (CombinedMap v)) sig m
   , Monad m
   , Algebra sig m )
-  => Algebra (Transaction :+: sig) (CombinedAsyncTransactionC m) where
+  => Algebra (Transaction :+: sig) (CombinedAsyncTransactionC v m) where
   alg hdl sig ctx = CombinedAsyncTransactionC handled
     where
       handled = case sig of

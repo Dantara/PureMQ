@@ -3,6 +3,7 @@
 module PureMQ.Database where
 
 import           Control.Algebra
+import           Control.Concurrent.MVar
 import           Control.Effect.Exception
 import           Control.Effect.Lift
 import           Control.Effect.Storage.Single.KeyValue
@@ -28,7 +29,7 @@ import           Unsafe.Coerce                          (unsafeCoerce)
 
 data Database = Database
   { databaseId :: DatabaseId
-  , storages   :: Map StorageName' Storage }
+  , storages   :: MVar Storages }
   deriving (Generic)
 
 instance Eq Database where
@@ -36,7 +37,7 @@ instance Eq Database where
 
 newtype DatabaseId = DatabaseId
   { unwrapDatabaseId :: Word }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, Num)
 
 newtype StorageName (k :: Type) (v :: Type) = StorageName
   { unwrapStorageName :: Text }
@@ -46,13 +47,17 @@ newtype StorageName' = StorageName'
   { unwrapStorageName' :: Text }
   deriving (Eq, Ord, Show, Generic)
 
+newtype Storages = Storages
+  { unwrapStorages :: Map StorageName' Storage }
+  deriving (Generic)
+
 data Storage where
   Storage
     :: (Typeable k, Typeable v)
     => Carriers k v
     -> Storage
 
-data Carriers k v = StorageCarriers
+data Carriers k v = Carriers
   { keyValCarrier :: Maybe (StorageCarrier (KeyValueStorage k v))
   , queueCarrier  :: Maybe (StorageCarrier (QueueStorage v))
   , transCarrier  :: TransactionCarrier }
@@ -72,12 +77,55 @@ data TransactionCarrier where
 
 data DatabaseException
   = StorageIsNotFound
+  | StorageAlreadyExists
   | StorageTypesAreWrong
   | KeyValueStorageIsNotSupported
   | QueueStorageIsNotSupported
   deriving (Eq, Ord, Show, Generic)
 
 instance Exception DatabaseException
+
+newDatabase :: Has (Lift IO) sig m => DatabaseId -> m Database
+newDatabase databaseId = do
+  storages <- sendIO $ newMVar $ Storages Map.empty
+  pure Database{..}
+
+addStorage
+  :: Has (Lift IO) sig m
+  => StorageName k v
+  -> Storage
+  -> Database
+  -> m ()
+addStorage name store db = do
+  storages <- sendIO $ takeMVar $ db ^. #storages
+  let mStorage = Map.lookup (coerce name) (unwrapStorages storages)
+  case mStorage of
+    Just _ -> do
+      sendIO $ putMVar (db ^. #storages) storages
+      throwIO StorageAlreadyExists
+    Nothing ->
+      sendIO
+        $ putMVar (db ^. #storages)
+        $ Storages
+        $ Map.insert (coerce name) store (coerce storages)
+
+removeStorage
+  :: Has (Lift IO) sig m
+  => StorageName k v
+  -> Database
+  -> m ()
+removeStorage name db = do
+  storages <- sendIO $ takeMVar $ db ^. #storages
+  let mStorage = Map.lookup (coerce name) (unwrapStorages storages)
+  case mStorage of
+    Just _ ->
+      sendIO
+        $ putMVar (db ^. #storages)
+        $ Storages
+        $ Map.delete (coerce name) (coerce storages)
+    Nothing -> do
+      sendIO $ putMVar (db ^. #storages) storages
+      throwIO StorageIsNotFound
 
 getKeyValueStorageCarrier
   :: forall k v a m sig
@@ -88,9 +136,10 @@ getKeyValueStorageCarrier
   -> StorageName k v
   -> m (StorageCarrier (KeyValueStorage k v))
 getKeyValueStorageCarrier db name = do
+  storages <- sendIO $ readMVar $ db ^. #storages
   storage <- maybe (throwIO StorageIsNotFound) pure
     $ Map.lookup (coerce name)
-    $ db ^. #storages
+    $ unwrapStorages storages
   carriers <- getCarriers storage
   maybe (throwIO KeyValueStorageIsNotSupported) pure
     $ carriers ^. #keyValCarrier
@@ -110,9 +159,10 @@ getQueueStorageCarrier
   -> StorageName k v
   -> m (StorageCarrier (QueueStorage v))
 getQueueStorageCarrier db name = do
+  storages <- sendIO $ readMVar $ db ^. #storages
   storage <- maybe (throwIO StorageIsNotFound) pure
     $ Map.lookup (coerce name)
-    $ db ^. #storages
+    $ unwrapStorages storages
   mQueueC <- mGetQueueCarrier storage
   maybe (throwIO QueueStorageIsNotSupported) pure mQueueC
   where
@@ -132,9 +182,10 @@ getTransactionCarrier
   -> StorageName k v
   -> m TransactionCarrier
 getTransactionCarrier db name = do
+  storages <- sendIO $ readMVar $ db ^. #storages
   storage <- maybe (throwIO StorageIsNotFound) pure
     $ Map.lookup (coerce name)
-    $ db ^. #storages
+    $ unwrapStorages storages
   getCarrier storage
   where
     getCarrier :: Storage -> m TransactionCarrier
@@ -143,3 +194,16 @@ getTransactionCarrier db name = do
           (Just Refl, _, Just Refl) -> pure $ carriers ^. #transCarrier
           (_, Just Refl, Just Refl) -> pure $ carriers ^. #transCarrier
           (_, _, _)                 -> throwIO StorageTypesAreWrong
+
+newtype DBCounter = DBCounter
+  { unDBCounter :: MVar DatabaseId }
+  deriving Generic
+
+initDBCounter :: Has (Lift IO) sig m => m DBCounter
+initDBCounter = fmap DBCounter $ sendIO $ newMVar 0
+
+nextDatabaseId :: Has (Lift IO) sig m => DBCounter -> m DatabaseId
+nextDatabaseId (DBCounter var) = do
+  id' <- sendIO $ takeMVar var
+  sendIO $ putMVar var $ id' + 1
+  pure id'

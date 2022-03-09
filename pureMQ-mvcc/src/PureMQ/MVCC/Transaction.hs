@@ -54,14 +54,14 @@ initPrepare isolationLevel MvccMap{..} mkLock = do
 
 initPrepareKeyValue
   :: IsolationLevel
-  -> MvccMap KeyValue v
+  -> MvccMap KeyValueM v
   -> IO TransactionID
 initPrepareKeyValue lvl mvccMap
   = initPrepare lvl mvccMap $ const $ pure ()
 
 initPrepareCombined
   :: IsolationLevel
-  -> MvccMap Combined v
+  -> MvccMap CombinedM v
   -> IO TransactionID
 initPrepareCombined lvl mvccMap
   = initPrepare lvl mvccMap
@@ -93,7 +93,7 @@ cancelPrepare transId MvccMap{..} = do
     $ WrongTransStatusChange currentStatus Canceled
   writeIORef ref $! set #status Canceled transData
 
-commitKeyValue :: TransactionID -> MvccMap KeyValue v -> IO ()
+commitKeyValue :: TransactionID -> MvccMap KeyValueM v -> IO ()
 commitKeyValue transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
   ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
@@ -113,7 +113,7 @@ commitKeyValue transId MvccMap{..} = do
     updateIfNeed n Nothing = Just n
     updateIfNeed _ x       = x
 
-commitAsyncKeyValue :: TransactionID -> MvccMap KeyValue v -> IO ()
+commitAsyncKeyValue :: TransactionID -> MvccMap KeyValueM v -> IO ()
 commitAsyncKeyValue transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
   ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
@@ -133,7 +133,7 @@ commitAsyncKeyValue transId MvccMap{..} = do
     updateIfNeed n Nothing = Just n
     updateIfNeed _ x       = x
 
-commitCombined :: TransactionID -> MvccMap Combined v -> IO ()
+commitCombined :: TransactionID -> MvccMap CombinedM v -> IO ()
 commitCombined transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
   ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
@@ -155,7 +155,7 @@ commitCombined transId MvccMap{..} = do
     updateIfNeed n Nothing = Just n
     updateIfNeed _ x       = x
 
-commitAsyncCombined :: TransactionID -> MvccMap Combined v -> IO ()
+commitAsyncCombined :: TransactionID -> MvccMap CombinedM v -> IO ()
 commitAsyncCombined transId MvccMap{..} = do
   UncommittedTransactions{..} <- readTVarIO uncommitted
   ref <- maybe (throwIO $ TransactionWasNotFound transId) (pure . unTransaction)
