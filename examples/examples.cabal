@@ -6,10 +6,14 @@ author:             Nikita Aleshchenko
 maintainer:         n.aleshchenko@tinkoff.ru
 
 library
-    exposed-modules:
+    exposed-modules:    ThreeThreads
     build-depends:      base >= 4.12.0.0
                       , pureMQ
                       , pureMQ-mvcc
+                      , fused-effects
+                      , fused-effects-exceptions
+                      , transformers
+                      , async
     hs-source-dirs:     src
     default-language:   Haskell2010
     default-extensions: BangPatterns
@@ -51,5 +55,12 @@ library
 executable single-db-transactions
     main-is:          SingleDB.hs
     build-depends:    base ^>=4.14.3.0
+    hs-source-dirs:   bin
+    default-language: Haskell2010
+
+executable three-threads-example
+    main-is:          ThreeThreadsBin.hs
+    build-depends:    base ^>=4.14.3.0
+                    , examples
     hs-source-dirs:   bin
     default-language: Haskell2010

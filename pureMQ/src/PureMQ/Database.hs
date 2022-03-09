@@ -18,6 +18,7 @@ import           Data.Kind
 import           Data.Map.Strict                        (Map)
 import qualified Data.Map.Strict                        as Map
 import           Data.Maybe
+import           Data.String                            (IsString)
 import           Data.Text                              (Text)
 import           Data.Typeable                          (eqT)
 import           GHC.Exception
@@ -41,11 +42,11 @@ newtype DatabaseId = DatabaseId
 
 newtype StorageName (k :: Type) (v :: Type) = StorageName
   { unwrapStorageName :: Text }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, IsString)
 
 newtype StorageName' = StorageName'
   { unwrapStorageName' :: Text }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, IsString)
 
 newtype Storages = Storages
   { unwrapStorages :: Map StorageName' Storage }

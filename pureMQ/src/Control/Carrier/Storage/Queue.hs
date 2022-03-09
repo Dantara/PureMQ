@@ -30,10 +30,10 @@ instance
   alg hdl sig ctx = QueueStorageC handled
     where
       handled = case sig of
-        L (Push db name key) -> fmap (<$ ctx) do
+        L (Push db name val) -> fmap (<$ ctx) do
           queueC <- getQueueStorageCarrier db name
           withTransaction db name $ \tId -> case queueC of
-            (StorageCarrier runC) -> sendIO $ runC tId $ S.push key
+            (StorageCarrier runC) -> sendIO $ runC tId $ S.push val
         L (Pull db name) -> fmap (<$ ctx) do
           queueC <- getQueueStorageCarrier db name
           withTransaction db name $ \tId -> case queueC of

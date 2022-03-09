@@ -47,22 +47,23 @@ data Transaction (m :: Type -> Type) r where
     :: PreparedTransaction a
     -> Transaction m (Maybe TransactionError)
 
-prepare'
+-- FIXME Add isolation level
+prepare
   :: forall effs a m sig
   .  ( Has CancelTransaction sig m
      , Has Transaction sig m
      , Storages effs sig m )
   => PrepareT sig m a
   -> m (Either TransactionError (PreparedTransaction a))
-prepare' = send . Prepare @_ @_ @effs
+prepare = send . Prepare @_ @_ @effs
 
-prepare
+unsafePrepare
   :: forall effs a m sig
   .  ( Has CancelTransaction sig m
      , Has Transaction sig m
      , Storages effs sig m )
   => m a -> m (Either TransactionError (PreparedTransaction a))
-prepare = prepare' @effs . PrepareT
+unsafePrepare = prepare @effs . PrepareT
 
 commit
   :: Has Transaction sig m
