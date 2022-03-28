@@ -35,7 +35,7 @@ initKeyValueMap mDelay = do
   pure mvccMap
 
 runIncrementer :: Key -> MVar Key -> IO ()
-runIncrementer i var = do
+runIncrementer i var = void $ forkIO do
   putMVar var $! i
   runIncrementer (i + 1) var
 

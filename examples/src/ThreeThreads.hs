@@ -12,7 +12,7 @@ import           Control.Effect.DBControl
 import           Control.Effect.Exception
 import           Control.Effect.Lift
 import           Control.Effect.Storage
-import           Control.Effect.Storage.Queue
+-- import           Control.Effect.Storage.Queue
 import           Control.Effect.Transaction
 import           Control.Effect.Transaction.Cancel
 import           Control.Monad.Trans.Reader         (ReaderT, runReaderT)
@@ -27,8 +27,10 @@ storageName = "some_storage"
 
 runThreeThreads :: IO ()
 runThreeThreads = do
+  putStrLn "Startup of three threads example"
   (db1, db2) <- initDBs
   gTranses <- sendIO initGTransactions
+  putStrLn "Initiated successfully"
   async1 <- sendIO
     $ async
     $ flip runReaderT (Nothing @TransactionID)
@@ -69,6 +71,7 @@ processReader
   => Database
   -> m ()
 processReader db = fix $ \repeat -> do
+  sendIO $ putStrLn "Waiting for an arbitrary number"
   nextInt <- (read @Int) <$> sendIO getLine
   push db storageName nextInt
   repeat
@@ -82,7 +85,8 @@ processCalculator
   -> Database
   -> m ()
 processCalculator dbFrom dbTo = fix $ \repeat -> do
-  eResult <- unsafePrepare @'[QueueStorage] do -- FIXME use safe prepare
+  sendIO $ putStrLn "Pulling received number"
+  eResult <- prepare @'[QueueStorage] do
     received <- pull dbFrom storageName
     push dbTo storageName (received + 1)
   result <- either throwIO pure eResult
@@ -95,6 +99,7 @@ processPrinter
   => Database
   -> m ()
 processPrinter db = fix $ \repeat -> do
+  sendIO $ putStrLn "Pulling result number"
   nextInt <- pull db storageName
   sendIO $ print nextInt
   repeat

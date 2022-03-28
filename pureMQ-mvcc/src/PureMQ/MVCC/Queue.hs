@@ -37,6 +37,7 @@ push val transId MvccMap{..} = do
   let updated = coerce $ Map.insert key val (coerce modifyLog)
   writeIORef ref $! set #modifyLog updated transData
 
+
 peekIfExistWithKey
   :: TransactionID
   -> MvccMap CombinedM v

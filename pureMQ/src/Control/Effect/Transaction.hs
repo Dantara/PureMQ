@@ -22,21 +22,21 @@ type family Storages xs sig m where
   Storages '[] sig m = ()
   Storages (x ': xs) sig m = (Has x sig m, StorageEff x, Storages xs sig m)
 
-newtype PrepareT sig m a = PrepareT { runPrepareT :: m a }
+newtype PrepareT storages sig m a = PrepareT { runPrepareT :: m a }
   deriving (Functor, Applicative, Monad, MonadThrow, MonadCatch)
 
 instance
   ( Algebra sig m
   , Storages xs sig m
   , Has CancelTransaction sig m )
-  => Algebra sig (PrepareT sig m) where
+  => Algebra sig (PrepareT xs sig m) where
   alg hdl sig ctx = PrepareT $ alg (runPrepareT . hdl) sig ctx
 
 data Transaction (m :: Type -> Type) r where
   Prepare
     :: ( Has CancelTransaction sig m
        , Storages effs sig m )
-    => PrepareT sig m a
+    => PrepareT effs sig m a
     -> Transaction m (Either TransactionError (PreparedTransaction a))
 
   Commit
@@ -53,7 +53,7 @@ prepare
   .  ( Has CancelTransaction sig m
      , Has Transaction sig m
      , Storages effs sig m )
-  => PrepareT sig m a
+  => PrepareT effs sig m a
   -> m (Either TransactionError (PreparedTransaction a))
 prepare = send . Prepare @_ @_ @effs
 
